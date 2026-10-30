@@ -22,6 +22,8 @@
 
 คีย์ลัด: `Space` เล่น/หยุด · `↑` `↓` ±1 BPM (`Shift` ±10) · `T` แตะจังหวะ
 
+**ภาษา / Language:** ปุ่ม ไทย / EN มุมขวาบน สลับได้ทันทีโดยไม่ต้องรีโหลด ครั้งแรกเลือกตามภาษาของเบราว์เซอร์และจำค่าที่เลือกไว้ · Switch between Thai and English with the ไทย / EN button in the top bar; the first visit follows your browser language and the choice is remembered.
+
 เสียงสร้างด้วย Web Audio API และตั้งเวลาล่วงหน้า (lookahead scheduler) ผ่าน Web Worker เพื่อให้จังหวะแม่นแม้แท็บอยู่เบื้องหลัง
 
 ## ซ้อมกับเพลง (Song Lab)

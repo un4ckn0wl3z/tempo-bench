@@ -178,6 +178,9 @@ input[type="range"] { width: 100%; accent-color: var(--teal); min-width: 0; }
 .adv-toggle input:checked::after { transform: translateX(14px); }
 .btn.txt { font-family: var(--font-ui); }
 .adv-tag { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 99px; background: var(--brass-soft); color: var(--brass); font-size: .65rem; letter-spacing: .08em; vertical-align: 1px; }
+.lang-switch { display: inline-flex; padding: 2px; border: 1px solid var(--line); border-radius: 99px; background: var(--panel); }
+.lang-switch button { border: 0; background: transparent; border-radius: 99px; padding: 4px 11px; min-height: 28px; font-weight: 600; font-size: .8rem; color: var(--muted); }
+.lang-switch button[aria-pressed="true"] { background: var(--ink); color: var(--panel); }
 .btn.reset { border-radius: 99px; min-height: 30px; padding: 3px 14px; font-size: .85rem; }
 .btn.reset.armed { color: var(--warn); border-color: var(--warn); }
 .subs b.off { background: transparent; box-shadow: inset 0 0 0 1px var(--line); }
@@ -293,6 +296,7 @@ canvas.wave.zoom { height: 72px; }
       <p><kbd>Space</kbd> เล่น/หยุด · <kbd>↑</kbd><kbd>↓</kbd> ±1 BPM (<kbd>Shift</kbd> ±10) · <kbd>T</kbd> แตะจังหวะ</p>
       <label class="adv-toggle"><input type="checkbox" id="advanced" data-key="advanced" role="switch">โหมด Advance</label>
       <button class="btn txt reset" id="resetAll" type="button">คืนค่าเริ่มต้น</button>
+      <div class="lang-switch" role="group" aria-label="Language" data-noi18n><button type="button" data-lang="th" aria-pressed="true">ไทย</button><button type="button" data-lang="en" aria-pressed="false">EN</button></div>
     </div>
   </header>
   <nav class="views" aria-label="โหมดการใช้งาน">
@@ -2527,6 +2531,175 @@ canvas.wave.zoom { height: 72px; }
   function renderAll() { renderBeats(); renderGrid(); renderSongList(); renderLog(); syncControls(); renderPresets(); }
   renderAll();
   if (location.hash === '#song') setView('song');
+
+  /* ---------- Language: Thai source, English on request ----------
+     The UI is written in Thai. In English mode every Thai text node and label attribute is shown
+     through translate(); a MutationObserver keeps text the app writes later in the chosen language. */
+  const EN_EXACT = {
+    // header, views, metronome
+    'เล่น/หยุด ·': 'play/stop ·', 'แตะจังหวะ': 'tap tempo', 'โหมด Advance': 'Advanced mode', 'คืนค่าเริ่มต้น': 'Reset to defaults',
+    'กดอีกครั้งเพื่อยืนยัน': 'Press again to confirm', 'คืนค่าแล้ว': 'Reset done', 'โหมดการใช้งาน': 'Mode',
+    'เมโทรนอม': 'Metronome', 'ซ้อมกับเพลง': 'Practice with a song', 'เครื่องเคาะจังหวะ': 'Metronome', 'การตั้งค่า': 'Settings',
+    'BPM ละเอียด': 'Fine BPM', 'แตะหา BPM': 'find BPM', 'แตะตามจังหวะเพลง 2 ครั้งขึ้นไป ระบบจะคำนวณ BPM ให้ (คีย์ลัด T)': 'Tap along with the music two or more times to get the BPM (shortcut T)',
+    'แตะช่องเพื่อเปลี่ยนน้ำหนักของแต่ละจังหวะ': 'Tap a cell to change the weight of each beat', 'เน้น': 'Accent', 'ปกติ': 'Normal', 'เบา': 'Soft', 'เงียบ': 'Mute',
+    'ห้องที่': 'Bar', 'จังหวะ': 'Beat', 'เวลา': 'Time', 'เริ่ม': 'Start', 'หยุด': 'Stop', 'นับ': 'Count', 'นับนำ': 'Count-in',
+    'ลดจำนวนจังหวะ': 'Fewer beats', 'เพิ่มจำนวนจังหวะ': 'More beats',
+    // tabs
+    'เสียง': 'Sound', 'ฝึกซ้อม': 'Practice', 'พรีเซ็ต': 'Presets', 'ส่งออก': 'Export',
+    'BPM นับตามตัวโน้ตล่าง เช่น 6/8 คือเคาะทุกเขบ็ตหนึ่งชั้น ถ้าต้องการเคาะ 6/8 แบบ 2 จังหวะต่อห้อง ให้ตั้ง 2/4 แล้วซอยโน้ต 3': 'BPM counts the bottom note value: 6/8 clicks every eighth note. For 6/8 in two, set 2/4 and subdivide by 3.',
+    'ซอยโน้ต (Subdivision)': 'Subdivision', 'ไม่ซอย': 'None', 'Swing ใช้ได้กับซอย 2 และ 4 · 50% คือตรง, 67% คือ triplet swing': 'Swing works with subdivisions 2 and 4 · 50% is straight, 67% is triplet swing',
+    'เปิด': 'On', 'ปิด': 'Off', 'จำนวนโน้ตต่อห้อง': 'Notes per bar', 'วางโน้ตเท่าๆ กันทับบนห้อง เช่น 3 ทับ 4 จังหวะ ได้ 3:4': 'Evenly spaced notes over the bar, e.g. 3 over 4 beats gives 3:4',
+    'ระดับเสียง': 'Volume', 'รวม': 'Master', 'จังหวะหลัก': 'Main beats', 'ซอยโน้ต': 'Subdivisions', 'ระดับเสียงสูงต่ำ': 'Pitch',
+    'จังหวะเน้น': 'Accent', 'จังหวะปกติ': 'Normal beat', 'ภาพ': 'Visuals', 'กระพริบแผงเมื่อถึงจังหวะ': 'Flash the panel on each beat', 'แกนลูกตุ้มแกว่งตามจังหวะ': 'Swing the pendulum with the beat',
+    'ไต่ความเร็ว': 'Speed trainer', 'เพิ่มครั้งละ (BPM)': 'Step (BPM)', 'ทุกกี่ห้อง': 'Every N bars', 'หยุดที่ BPM': 'Stop at BPM',
+    'เริ่มจาก BPM ปัจจุบัน ถ้าเป้าต่ำกว่า จะลดความเร็วลงแทน กดหยุดแล้ว BPM จะกลับไปค่าเริ่มต้น': 'Starts from the current BPM; a lower target slows down instead. Stopping returns to the starting BPM.',
+    'เล่นกี่ห้อง': 'Bars on', 'เงียบกี่ห้อง': 'Bars silent', 'เงียบเป็นช่วงๆ เพื่อฝึกนับในใจ แล้วดูว่ากลับมาตรงจังหวะหรือไม่': 'Goes silent for a while so you keep time on your own, then checks whether you are still on the beat',
+    'สุ่มเงียบ': 'Random mute', 'โอกาสต่อจังหวะ': 'Chance per beat', 'ตั้งเวลา': 'Timer', 'หยุดเองหลัง': 'Stop after', 'นาที': 'min',
+    'ห้องนับนำเล่นครบทุกจังหวะ ไม่นับรวมกับ gap click หรือการไต่ความเร็ว': 'Count-in bars play every beat and are not counted by gap click or the speed trainer',
+    'บันทึกค่าปัจจุบัน': 'Save current settings', 'ชื่อ เช่น เพลงเปิดงาน 96': 'Name, e.g. Opener 96', 'ชื่อพรีเซ็ต': 'Preset name', 'บันทึก': 'Save',
+    'ของฉัน': 'Mine', 'ตัวอย่าง': 'Examples', 'โหลด': 'Load', 'ลบ': 'Delete', 'ยังไม่มี ตั้งค่าที่ต้องการแล้วกดบันทึกด้านบน': 'Nothing yet. Set things up and press Save above.',
+    // advanced
+    'หน่วยของ BPM': 'BPM unit', 'ตามตัวล่าง': 'Bottom note', 'ตัวขาว': 'Half note', 'ตัวขาวประจุด': 'Dotted half', 'ตัวดำ': 'Quarter note', 'ตัวดำประจุด': 'Dotted quarter',
+    'เขบ็ต 1 ชั้น': 'Eighth note', 'เขบ็ต 1 ชั้นประจุด': 'Dotted eighth', 'เขบ็ต 2 ชั้น': 'Sixteenth note',
+    'คลิกตามหน่วยนี้ (เช่น 6/8 กับ ♩. ได้ 2 คลิกต่อห้อง)': 'Click on this unit (e.g. 6/8 with ♩. gives 2 clicks per bar)',
+    'ใช้กับห้องผสมอย่าง 6/8, 9/8, 12/8 ถ้าแบ่งห้องตามหน่วยไม่ลงตัว จะคลิกตามตัวล่าง แต่ยังคิดความเร็วตามหน่วยที่เลือก': 'For compound meters such as 6/8, 9/8 and 12/8. If the bar does not divide evenly by the unit, it clicks on the bottom note but keeps the tempo of the chosen unit.',
+    'กริดจังหวะ': 'Rhythm grid',
+    'ตั้งการซอยแยกรายจังหวะ แล้วแตะช่องเพื่อเปิดหรือปิดโน้ตแต่ละตัว ช่องที่ปิดคือตัวหยุดหรือโน้ตที่โยงมาจากตัวก่อนหน้า ใช้ทำโน้ตประจุดและ syncopation ได้': 'Set a subdivision per beat, then tap cells to turn notes on or off. An off cell is a rest or a note tied from the one before; use it for dotted rhythms and syncopation.',
+    'เต็มทุกตัว': 'All notes', '♪. ♬ ประจุด': '♪. ♬ dotted', 'โครงเพลง': 'Song structure',
+    'เล่นท่อนต่อกันตามลำดับ แต่ละท่อนมีจำนวนห้อง ห้องจังหวะ และ BPM ของตัวเอง ระหว่างนี้การไต่ความเร็วจะไม่ทำงาน': 'Plays sections in order, each with its own bar count, meter and BPM. The speed trainer is paused meanwhile.',
+    '+ เพิ่มท่อน': '+ Add section', 'วนซ้ำเมื่อจบ': 'Loop at the end', 'ชื่อท่อน': 'Section', 'ห้อง': 'Bars', 'ตัวล่าง': 'Note', 'ยังไม่มีท่อน กดเพิ่มท่อนด้านล่าง': 'No sections yet. Add one below.',
+    'เสียงและภาพ': 'Sound and visuals', 'เลื่อนภาพ': 'Visual offset', 'ถ้าภาพมาก่อนเสียง เช่นตอนใช้หูฟังบลูทูธ ให้เพิ่มค่าจนไฟกระพริบตรงกับเสียง': 'If the visuals run ahead of the sound, e.g. with Bluetooth headphones, raise this until the flash matches the click.',
+    'ปิดเสียงทั้งหมด ดูภาพอย่างเดียว': 'Mute everything, visuals only', 'สถิติการซ้อม': 'Practice stats', 'ล้างสถิติ': 'Clear stats', 'ล้างแล้ว': 'Cleared',
+    'วันนี้': 'Today', '7 วันล่าสุด': 'Last 7 days', 'ซ้อมต่อเนื่อง': 'Streak',
+    'นับเวลาที่เมโทรนอมเล่นอยู่ (วันละ 1 นาทีขึ้นไปถึงนับเป็นวันต่อเนื่อง) เก็บไว้ในเบราว์เซอร์เครื่องนี้เท่านั้น': 'Counts the time the metronome is playing (one minute or more counts as a day in the streak). Stored in this browser only.',
+    // export
+    'ส่งออก click track': 'Export a click track',
+    'สร้างไฟล์คลิกจากค่าที่ตั้งไว้ตอนนี้ทั้งหมด ทั้งเสียง ความดัง การเน้น ซอยโน้ต polyrhythm นับนำ ไต่ความเร็ว และกริดจังหวะกับโครงเพลงถ้าเปิดโหมด Advance ไว้ ใช้เป็น click source ใน DAW เล่นสด หรือซ้อมจากเครื่องเล่นอื่นได้': 'Builds a click file from everything set right now: sound, volume, accents, subdivisions, polyrhythm, count-in, speed trainer, and the rhythm grid and song structure when Advanced mode is on. Use it as a click source in a DAW, live, or on another player.',
+    'ความยาว': 'Length', 'ใส่ช่วงเงียบของ gap click และสุ่มเงียบลงในไฟล์ด้วย': 'Include gap-click and random-mute silences in the file',
+    'ดาวน์โหลด WAV': 'Download WAV', 'ดาวน์โหลด MIDI': 'Download MIDI', 'ในหน้านี้ไฟล์จะถูกห่อเป็น .zip ก่อนบันทึก ถ้าต้องการไฟล์ .wav / .mid ตรงๆ ให้เปิดจาก': 'On this page files are wrapped in a .zip before saving. For plain .wav / .mid files, open',
+    'รายละเอียดไฟล์': 'File details', 'WAV: 16-bit mono เริ่มคลิกแรกที่เวลา 0 พอดี วางที่ต้นเพลงใน DAW แล้วตรงจังหวะ': 'WAV: 16-bit mono; the first click is exactly at 0, so it lines up when placed at the start of a DAW project.',
+    'MIDI: ช่อง 10 (กลอง GM) เน้น = Hi Wood Block (76), ปกติ = Low Wood Block (77), ซอยโน้ต = Closed Hi-hat (42), polyrhythm = Side Stick (37) มี tempo map และ time signature ตามโครงเพลงและการไต่ความเร็ว ลากเข้า DAW แล้ว grid ของโปรเจกต์จะตามจังหวะนี้': 'MIDI: channel 10 (GM drums). Accent = Hi Wood Block (76), beat = Low Wood Block (77), subdivision = Closed Hi-hat (42), polyrhythm = Side Stick (37). Includes the tempo map and time signatures from the song structure and speed trainer, so your DAW grid follows it.',
+    'ทั้งโครงเพลง': 'Whole song structure', 'ยกเลิกการบันทึกไฟล์แล้ว': 'Save cancelled', 'มีหน้าต่างบันทึกไฟล์เปิดค้างอยู่ รอสักครู่แล้วกดใหม่': 'A save dialog is already open. Wait a moment and try again.',
+    'บันทึกไฟล์ในหน้านี้ไม่ได้ ให้เปิดจาก un4ckn0wl3z.github.io/tempo-bench แทน': 'Files can’t be saved on this page. Open un4ckn0wl3z.github.io/tempo-bench instead.',
+    'ไม่มีเสียงคลิกให้ส่งออก ตรวจว่าไม่ได้ตั้งทุกจังหวะเป็นเงียบ': 'No clicks to export. Check that not every beat is muted.',
+    // presets and grid labels
+    '6/8 บัลลาด': '6/8 ballad', '6/8 นับ ♩. = 60': '6/8 in two, ♩. = 60', '16th โน้ตเร็ว 90': 'Fast 16ths 90', 'โครงเพลงตัวอย่าง': 'Example song structure', 'กริด': 'grid',
+    // song lab
+    'ไฟล์เพลง': 'Song file', 'เลือกไฟล์ หรือลากมาวางตรงนี้': 'Choose a file or drop it here', 'เพลง mp3 · wav · m4a · ogg · flac': 'Audio mp3 · wav · m4a · ogg · flac',
+    'เล่นตามเครื่องหมายวนซ้ำ (repeat) ในไฟล์': 'Follow repeats in the file',
+    'ไฟล์อยู่ในเบราว์เซอร์ของเครื่องนี้เท่านั้น ไม่ได้อัปโหลดไปไหน การตั้งค่าคลิกของแต่ละไฟล์จะถูกจำไว้': 'Files stay in this browser and are not uploaded anywhere. Click settings are remembered per file.',
+    'วางคลิกให้ตรงกับเพลง': 'Line the click up with the song', 'ห้องจังหวะ': 'Meter', 'ห้อง 1 เริ่มที่': 'Bar 1 starts at', 'วินาที': 'seconds', 'ตามเพลง': 'along',
+    'ลด BPM ครึ่งหนึ่ง': 'Halve the BPM', 'เพิ่ม BPM สองเท่า': 'Double the BPM', 'ซูมรอบจุดเริ่มห้อง 1 แตะเพื่อย้ายจุดเริ่ม': 'Zoom around the start of bar 1; tap to move it',
+    'ตั้งห้อง 1 ตรงตำแหน่งที่กำลังเล่น': 'Set bar 1 at the playhead', 'หรือแตะบนคลื่นเสียงที่ซูมไว้ด้านบน เส้นสีทองคือห้อง 1': 'or tap the zoomed waveform above; the gold line is bar 1',
+    'ไทม์ไลน์เพลง แตะเพื่อเลือกห้อง': 'Song timeline; tap to select a bar', 'เล่นจากห้องที่เลือก': 'Play from the selected bar', 'วนช่วงที่เลือก': 'Loop the selection', 'นับนำ 1 ห้อง': '1-bar count-in',
+    'เลื่อนตามตำแหน่งเล่น': 'Follow the playhead', 'เพลง': 'Song', 'โน้ต': 'Notes', 'คลิก': 'Click', 'แทร็กจากไฟล์ แตะเพื่อปิดเสียงส่วนที่จะเล่นเอง': 'Tracks in the file; tap to mute the part you will play',
+    'แตะเพื่อปิดหรือเปิดเสียงแทร็กนี้': 'Tap to mute or unmute this track',
+    'เสียงคลิก ระดับเสียงสูงต่ำ และความดังของจังหวะหลักกับโน้ตที่ซอย ใช้ค่าจากแท็บเสียงของหน้าเมโทรนอม ไฟล์ Guitar Pro และ MIDI ใช้ชุดเสียงเดียวกับ Riff Forge: กลองและเบสจาก SONiVOX EAS (': 'Click sound, pitch and the volume of beats and subdivisions come from the Sound tab of the metronome. Guitar Pro and MIDI files use the Riff Forge sound set: drums and bass from SONiVOX EAS (',
+    ') กีตาร์เป็นเสียงอ้างอิงแบบเดียวกัน เครื่องดนตรีอื่นเป็นเสียงสังเคราะห์': '), the same reference guitar, and a synth for other instruments.',
+    'แผนที่ห้อง': 'Bar map', 'แตะห้องแรกแล้วแตะห้องสุดท้ายเพื่อเลือกช่วง ลากด้วยเมาส์ หรือกด Shift ค้างก็ได้': 'Tap the first bar, then the last, to select a range. Mouse drag and Shift-click work too.',
+    'ช่วงที่เลือก': 'Selection', 'กำลังเล่น': 'Playing', 'ปิดคลิก': 'Click off', 'ซอยโน้ตในห้องนั้น': 'subdivided bar',
+    'จาก': 'From', 'ถึง': 'to', 'ทั้งเพลง': 'Whole song', 'คลิกของช่วงนี้': 'Click for this range', 'ปิดคลิก (นับในใจ)': 'Click off (count in your head)',
+    'เน้นจังหวะแรกของห้อง': 'Accent the first beat of the bar', 'ห้องผสม x/8: คลิกทุก ♩. (3 ตัวต่อคลิก)': 'Compound x/8: click every ♩. (3 per click)',
+    'ซอยรายจังหวะ': 'Per-beat subdivision', 'ใช้การซอยทั้งห้อง (ล้างค่ารายจังหวะ)': 'Use the bar subdivision (clear per-beat)',
+    'เลือกการซอยของแต่ละจังหวะ แล้วแตะช่องเพื่อเปิดหรือปิดโน้ต ช่องแรกคือตัวจังหวะเอง': 'Pick a subdivision for each beat, then tap cells to turn notes on or off. The first cell is the beat itself.',
+    'ห้องที่เลือกมีจำนวนจังหวะไม่เท่ากัน เลือกห้องเดียว หรือหลายห้องที่มีจังหวะเท่ากัน เพื่อตั้งรายจังหวะ': 'The selected bars have different beat counts. Select one bar, or bars with the same number of beats, to set beats individually.',
+    'ตอนนี้ช่วงนี้ใช้คลิกตามโน้ตแทน': 'this range currently clicks on the notes instead',
+    'คลิกตามโน้ตในไฟล์': 'Click on the file’s notes', 'แทนคลิกจังหวะ': 'Replace beat clicks', 'เพิ่มจากคลิกจังหวะ': 'Add to beat clicks', 'ใช้โน้ตจากแทร็ก': 'Notes from tracks',
+    'คลิกตรงจุดเริ่มของโน้ตแต่ละตัวในแทร็กที่เลือก ช่วยซ้อมริฟฟ์ที่จังหวะซับซ้อน โน้ตที่ตกตรงจังหวะใช้เสียงคลิกหลัก โน้ตระหว่างจังหวะใช้เสียงโน้ตซอย': 'Clicks on the start of every note in the chosen tracks, to practise riffs with tricky rhythms. Notes on the beat use the beat click; notes between beats use the subdivision click.',
+    'ความเร็วและห้องจังหวะของช่วงนี้': 'Tempo and meter for this range', 'ตามหลัก': 'main', 'เว้นว่างไว้เพื่อใช้ค่าหลัก ใช้กับเพลงที่เปลี่ยนความเร็วหรือห้องจังหวะกลางเพลง': 'Leave empty to use the main values. For songs that change tempo or meter part-way.',
+    'คืนค่าเริ่มต้นของช่วงนี้': 'Reset this range', 'ส่งออก click track ของช่วงนี้': 'Export a click track of this range', 'เริ่มไฟล์ที่ต้นเพลง': 'File starts at song start', 'เริ่มไฟล์ที่ห้องแรกของช่วง': 'File starts at the first selected bar',
+    'ใส่เสียงโน้ตจากไฟล์ใน WAV (เฉพาะแทร็กที่เปิดเสียงอยู่)': 'Include the file’s notes in the WAV (unmuted tracks only)',
+    'ไฟล์เสียง': 'Audio file', 'ตัวอย่าง ยังไม่ได้เลือกไฟล์': 'Example, no file chosen yet', 'ก่อนห้อง 1': 'Before bar 1', 'โหลดเสียง…': 'Loading sounds…', 'กำลังโหลดชุดเสียง…': 'Loading the sound set…',
+    'ช่วงนี้ยาวเกิน 30 นาที เลือกช่วงให้สั้นลง': 'This range is longer than 30 minutes. Pick a shorter one.', 'ช่วงนี้ไม่มีเสียงคลิก ตรวจว่าไม่ได้ปิดคลิกไว้ทั้งช่วง': 'This range has no clicks. Check that the click isn’t off for the whole range.',
+    'ไม่รู้จักชนิดไฟล์นี้ ใช้ไฟล์เพลง, Guitar Pro หรือ MIDI': 'Unknown file type. Use an audio, Guitar Pro or MIDI file.', 'ถอดรหัสไฟล์เสียงไม่ได้ เบราว์เซอร์นี้อาจไม่รองรับฟอร์แมตนี้ ลองแปลงเป็น mp3 หรือ wav': 'Couldn’t decode the audio. This browser may not support the format; try mp3 or wav.',
+    'โหลดตัวอ่าน Guitar Pro ไม่สำเร็จ': 'Couldn’t load the Guitar Pro reader', 'โหลดตัวอ่าน Guitar Pro ไม่สำเร็จ ลองรีโหลดหน้าแล้วเปิดใหม่': 'Couldn’t load the Guitar Pro reader. Reload the page and try again.',
+    'ไฟล์ Guitar Pro ใหญ่เกิน 30 MB': 'The Guitar Pro file is larger than 30 MB', 'อ่านไฟล์ Guitar Pro ไม่ได้ ไฟล์อาจเสียหรือเป็นเวอร์ชันที่ไม่รองรับ': 'Couldn’t read the Guitar Pro file. It may be damaged or an unsupported version.',
+    'ไฟล์นี้ไม่มีห้องดนตรี': 'This file has no bars', 'ไฟล์นี้มีเกิน 2000 ห้อง': 'This file has more than 2000 bars', 'ไม่ใช่ไฟล์ MIDI': 'Not a MIDI file', 'ไฟล์ MIDI เสียหาย': 'The MIDI file is damaged',
+    'ไฟล์ MIDI แบบ SMPTE time code ยังไม่รองรับ': 'MIDI files with SMPTE time code are not supported yet',
+    'ไม่มี': 'None', 'กลอง': 'Drums', 'เปียโน': 'Piano', 'ออร์แกน': 'Organ', 'กีตาร์': 'Guitar', 'กีตาร์ไฟฟ้า': 'Electric guitar', 'กีตาร์ distortion': 'Distortion guitar', 'เบส': 'Bass', 'เครื่องสาย': 'Strings', 'แทร็ก': 'Track'
+  };
+  const EN_PATTERNS = [
+    [/^ห้อง (\d+)$/, 'Bar $1'], [/^ห้อง (\d+)–(\d+)$/, 'Bars $1–$2'], [/^ห้อง (\d+)\/(\d+)$/, 'bar $1/$2'], [/^ห้อง –$/, 'Bar –'],
+    [/^ห้อง (\d+) \(ห้อง (\d+) ในโน้ต\)$/, 'Bar $1 (bar $2 in the score)'], [/^ห้อง (\d+) \(ห้อง (\d+) ในโน้ต\) (\d+\/\d+)$/, 'Bar $1 (bar $2 in the score), $3'], [/^ห้อง (\d+) (\d+\/\d+)$/, 'Bar $1, $2'], [/^\(ห้อง (\d+) ในโน้ต\)$/, '(bar $1 in the score)'],
+    [/^(\d+) ห้อง$/, (m, n) => `${n} bar${n === '1' ? '' : 's'}`], [/^(\d+) ห้อง \+ นับนำ (\d+)$/, '$1 bars + $2 count-in'], [/^รวม (\d+) ห้อง$/, '$1 bars in total'],
+    [/^(\d+) คลิก\/ห้อง$/, '$1 clicks/bar'], [/^([\d.]+) ms \/ คลิก$/, '$1 ms / click'], [/^([\d.]+) ms \/ จังหวะ$/, '$1 ms / beat'],
+    [/^(\d+) นาที$/, '$1 min'], [/^(\d+) ชม\. (\d+) น\.$/, '$1 h $2 min'], [/^(\d+) วัน$/, (m, n) => `${n} day${n === '1' ? '' : 's'}`],
+    [/^(\d+) ท่อน$/, '$1 sections'], [/^ท่อน (\d+)$/, 'Section $1'], [/^ท่อน (.+)$/, 'Section $1'], [/^ลบท่อน (\d+)$/, 'Delete section $1'], [/^แทร็ก (\d+)$/, 'Track $1'],
+    [/^\+?โน้ต$/, (m) => m.replace('โน้ต', 'notes')], [/^(.+)\+โน้ต$/, (m, a) => `${translate(a)}+notes`], [/^ซอย (\d+)(.*)$/, '÷$1$2'], [/^ซอยจังหวะ (\d+)$/, 'Subdivision of beat $1'], [/^จังหวะ (\d+)$/, 'Beat $1'],
+    [/^จังหวะ (\d+) โน้ต(?:ย่อย)?ที่ (\d+)$/, 'Beat $1, step $2'], [/^จังหวะ (\d+): (.+)$/, (m, n, l) => `Beat ${n}: ${translate(l)}`],
+    [/^ไต่ความเร็ว (.+) → (.+)$/, 'Speed trainer $1 → $2'], [/^สุ่มเงียบ (\d+)%$/, 'Random mute $1%'], [/^หยุดเองที่ (\d+) นาที$/, 'Stops at $1 min'],
+    [/^Gap click: ช่วงเล่น$/, 'Gap click: playing'], [/^ช่วงเงียบ นับในใจ$/, 'Silent stretch, keep counting'],
+    [/^กำลังเปิด (.+)…$/, 'Opening $1…'], [/^เปิดไฟล์ไม่ได้: (.+)$/, (m, e) => `Couldn’t open the file: ${translate(e)}`],
+    [/^กำลังสร้าง WAV… (\d+)%$/, 'Rendering WAV… $1%'], [/^สร้าง (.+) แล้ว$/, 'Created $1'], [/^(\d+) โน้ต$/, '$1 notes'],
+    [/^สร้างไฟล์ไม่สำเร็จ: (.*?)(?: ลองลดความยาวหรือใช้ 44\.1 kHz)?$/, 'Couldn’t create the file: $1. Try a shorter length or 44.1 kHz.'],
+    [/^WAV ประมาณ ([\d.]+) MB$/, 'WAV about $1 MB'], [/^ไฟล์ยาว (.+)$/, 'length $1'], [/^ประมาณ (.+)$/, 'about $1'],
+    [/^ยาวเกิน 30 นาที จะตัดที่ 30 นาที$/, 'over 30 minutes, cut at 30'], [/^ยาวเกิน 30 นาที ลดช่วงลงก่อน$/, 'over 30 minutes, shorten the range first'],
+    [/^มีความเงียบก่อน(.+) วางไฟล์ที่ต้นโปรเจกต์ใน DAW ได้เลย$/, (m, w) => `silence before ${translate(w).toLowerCase()}; drop the file at the start of your DAW project`],
+    [/^ไฟล์เริ่มที่(.+) ให้วางไฟล์ที่ตำแหน่งนั้นในโปรเจกต์$/, (m, w) => `starts at ${translate(w).toLowerCase()}; place it there in your project`],
+    [/^ใช้กับห้อง (\d+)–(\d+)$/, 'applies to bars $1–$2'], [/^เล่นตาม repeat \(เขียนไว้ (\d+) ห้อง\)$/, 'follows repeats ($1 bars written)'],
+    [/^โหลดเสียง (.+) ไม่สำเร็จ$/, 'Couldn’t load sound $1']
+  ];
+  const THAI = /[฀-๿]/, trCache = new Map();
+  function translate(text) {
+    const t = text.trim();
+    if (!THAI.test(t)) return text;
+    let out = trCache.get(t);
+    if (out === undefined) {
+      out = EN_EXACT[t];
+      if (out === undefined) for (const [re, rep] of EN_PATTERNS) if (re.test(t)) { out = t.replace(re, rep); break; }
+      if (out === undefined && t.includes(' · ')) out = t.split(' · ').map(p => translate(p)).join(' · ');
+      if (out === undefined) out = t;
+      trCache.set(t, out);
+    }
+    return text.replace(t, out);
+  }
+  let uiLang = 'th';
+  const ORIG = new WeakMap(), LAST = new WeakMap(), I18N_ATTRS = ['aria-label', 'placeholder', 'title', 'alt'];
+  const skip = (el) => !el || el.closest('script,style,[data-noi18n]');
+  function syncText(node) {
+    if (skip(node.parentElement)) return;
+    const cur = node.data;
+    if (cur !== LAST.get(node)) { if (THAI.test(cur)) ORIG.set(node, cur); else { ORIG.delete(node); LAST.set(node, cur); return; } }
+    const orig = ORIG.get(node); if (orig == null) return;
+    const want = uiLang === 'en' ? translate(orig) : orig;
+    LAST.set(node, want); if (cur !== want) node.data = want;
+  }
+  function syncAttr(el, name) {
+    if (skip(el) || !el.hasAttribute(name)) return;
+    const cur = el.getAttribute(name), store = ORIG.get(el) || {}, last = (LAST.get(el) || {})[name];
+    if (cur !== last) { if (THAI.test(cur)) store[name] = cur; else { delete store[name]; ORIG.set(el, store); return; } }
+    ORIG.set(el, store);
+    const orig = store[name]; if (orig == null) return;
+    const want = uiLang === 'en' ? translate(orig) : orig;
+    LAST.set(el, { ...(LAST.get(el) || {}), [name]: want }); if (cur !== want) el.setAttribute(name, want);
+  }
+  function syncTree(root) {
+    if (root.nodeType === 3) return syncText(root);
+    if (root.nodeType !== 1) return;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
+    for (let n = root; n; n = walker.nextNode()) {
+      if (n.nodeType === 3) syncText(n);
+      else I18N_ATTRS.forEach(a => syncAttr(n, a));
+    }
+  }
+  new MutationObserver(records => {
+    for (const r of records) {
+      if (r.type === 'characterData') syncText(r.target);
+      else if (r.type === 'attributes') syncAttr(r.target, r.attributeName);
+      else r.addedNodes.forEach(syncTree);
+    }
+  }).observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: I18N_ATTRS });
+  function setLang(l) {
+    uiLang = l === 'en' ? 'en' : 'th';
+    document.documentElement.lang = uiLang;
+    document.querySelectorAll('[data-lang]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.lang === uiLang)));
+    syncTree(document.body);
+    try { localStorage.setItem('tb-lang', uiLang); } catch (e) {}
+  }
+  document.querySelectorAll('[data-lang]').forEach(b => b.addEventListener('click', () => setLang(b.dataset.lang)));
+  let startLang = 'th';
+  try { startLang = localStorage.getItem('tb-lang') || ((navigator.language || '').toLowerCase().startsWith('th') ? 'th' : 'en'); } catch (e) {}
+  setLang(startLang);
 })();
 </script>
 </body>
