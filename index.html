@@ -176,6 +176,8 @@ input[type="range"] { width: 100%; accent-color: var(--teal); min-width: 0; }
 .adv-toggle input:checked { background: var(--brass); }
 .adv-toggle input:checked::after { transform: translateX(14px); }
 .btn.txt { font-family: var(--font-ui); }
+.btn.reset { border-radius: 99px; min-height: 30px; padding: 3px 14px; font-size: .85rem; }
+.btn.reset.armed { color: var(--warn); border-color: var(--warn); }
 .subs b.off { background: transparent; box-shadow: inset 0 0 0 1px var(--line); }
 .subs b.off.on { background: var(--muted); }
 .gridrows { display: grid; gap: 8px; }
@@ -224,6 +226,7 @@ input[type="range"] { width: 100%; accent-color: var(--teal); min-width: 0; }
     <div class="top-right">
       <p><kbd>Space</kbd> เล่น/หยุด · <kbd>↑</kbd><kbd>↓</kbd> ±1 BPM (<kbd>Shift</kbd> ±10) · <kbd>T</kbd> แตะจังหวะ</p>
       <label class="adv-toggle"><input type="checkbox" id="advanced" data-key="advanced" role="switch">โหมด Advance</label>
+      <button class="btn txt reset" id="resetAll" type="button">คืนค่าเริ่มต้น</button>
     </div>
   </header>
 
@@ -545,7 +548,11 @@ input[type="range"] { width: 100%; accent-color: var(--teal); min-width: 0; }
   const songActive = () => state.advanced && state.songOn && state.song.length > 0;
 
   let saveT;
-  function persist() { clearTimeout(saveT); saveT = setTimeout(() => store.set('tb-state', state), 200); }
+  function persist() { clearTimeout(saveT); saveT = setTimeout(persistNow, 200); }
+  function persistNow() { clearTimeout(saveT); store.set('tb-state', state); }
+  // a debounced save can be lost if the page is hidden or closed right after a change
+  addEventListener('pagehide', persistNow);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') persistNow(); });
 
   /* ---------- Tempo ---------- */
   function setBpm(v) {
@@ -1090,6 +1097,28 @@ input[type="range"] { width: 100%; accent-color: var(--teal); min-width: 0; }
     setTimeout(() => { if (resetArm && Date.now() - resetArm >= 3000) b.textContent = 'ล้างสถิติ'; }, 3100);
   });
   addEventListener('pagehide', flushLog);
+
+  /* ---------- Reset to defaults ---------- */
+  // two-step confirm: first click arms the button for 3 s, second click resets
+  let resetAllArm = 0, resetAllT;
+  function disarmReset(text) {
+    resetAllArm = 0; $('resetAll').classList.remove('armed'); $('resetAll').textContent = text;
+  }
+  $('resetAll').addEventListener('click', () => {
+    clearTimeout(resetAllT);
+    if (resetAllArm && Date.now() - resetAllArm < 3000) {
+      if (playing) stop();
+      state = clone(DEFAULTS);
+      document.querySelector('[data-tab="rhythm"]').click();
+      renderAll(); persistNow();
+      disarmReset('คืนค่าแล้ว');
+      resetAllT = setTimeout(() => disarmReset('คืนค่าเริ่มต้น'), 1500);
+      return;
+    }
+    resetAllArm = Date.now();
+    $('resetAll').classList.add('armed'); $('resetAll').textContent = 'กดอีกครั้งเพื่อยืนยัน';
+    resetAllT = setTimeout(() => disarmReset('คืนค่าเริ่มต้น'), 3000);
+  });
 
   /* ---------- Keyboard ---------- */
   document.addEventListener('keydown', e => {
