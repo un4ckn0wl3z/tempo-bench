@@ -294,6 +294,7 @@ input[type="range"] { width: 100%; accent-color: var(--teal); min-width: 0; }
         <button role="tab" aria-selected="false" data-tab="sound">เสียง</button>
         <button role="tab" aria-selected="false" data-tab="train">ฝึกซ้อม</button>
         <button role="tab" aria-selected="false" data-tab="presets">พรีเซ็ต</button>
+        <button role="tab" aria-selected="false" data-tab="export">ส่งออก</button>
       </div>
 
       <div class="pane" data-pane="rhythm">
@@ -466,6 +467,35 @@ input[type="range"] { width: 100%; accent-color: var(--teal); min-width: 0; }
           <ul class="plist" id="builtinPresets"></ul>
         </div>
       </div>
+
+      <div class="pane" data-pane="export" id="exportPane" hidden>
+        <div class="group">
+          <h3>ส่งออก click track</h3>
+          <p class="hint">สร้างไฟล์คลิกจากค่าที่ตั้งไว้ตอนนี้ทั้งหมด ทั้งเสียง ความดัง การเน้น ซอยโน้ต polyrhythm นับนำ ไต่ความเร็ว และกริดจังหวะกับโครงเพลงถ้าเปิดโหมด Advance ไว้ ใช้เป็น click source ใน DAW เล่นสด หรือซ้อมจากเครื่องเล่นอื่นได้</p>
+          <div class="sig">
+            <label class="meta" for="exLen">ความยาว</label>
+            <input class="num" type="number" id="exLen" data-key="exLen" min="1" max="999" step="1">
+            <div class="chips" data-chip="exUnit"><button data-v="bars">ห้อง</button><button data-v="min">นาที</button></div>
+          </div>
+          <div class="sig">
+            <span class="meta">Sample rate</span>
+            <div class="chips" data-chip="exRate"><button data-v="44100">44.1 kHz</button><button data-v="48000">48 kHz</button></div>
+          </div>
+          <label class="switch"><input type="checkbox" id="exMutes" data-key="exMutes">ใส่ช่วงเงียบของ gap click และสุ่มเงียบลงในไฟล์ด้วย</label>
+          <p class="meta" id="exSummary"></p>
+          <div class="tempo-tools">
+            <button class="btn txt" id="exWav" type="button">ดาวน์โหลด WAV</button>
+            <button class="btn txt" id="exMidi" type="button">ดาวน์โหลด MIDI</button>
+          </div>
+          <p class="hint" id="exStatus" role="status"></p>
+          <p class="hint" id="exFrameNote" hidden>ถ้ากดแล้วไม่มีไฟล์ดาวน์โหลด แปลว่าหน้านี้ถูกฝังอยู่ในกรอบที่บล็อกการดาวน์โหลด ให้เปิดจาก <a href="https://un4ckn0wl3z.github.io/tempo-bench/" target="_blank" rel="noopener">un4ckn0wl3z.github.io/tempo-bench</a> แทน</p>
+        </div>
+        <div class="group">
+          <h3>รายละเอียดไฟล์</h3>
+          <p class="hint">WAV: 16-bit mono เริ่มคลิกแรกที่เวลา 0 พอดี วางที่ต้นเพลงใน DAW แล้วตรงจังหวะ</p>
+          <p class="hint">MIDI: ช่อง 10 (กลอง GM) เน้น = Hi Wood Block (76), ปกติ = Low Wood Block (77), ซอยโน้ต = Closed Hi-hat (42), polyrhythm = Side Stick (37) มี tempo map และ time signature ตามโครงเพลงและการไต่ความเร็ว ลากเข้า DAW แล้ว grid ของโปรเจกต์จะตามจังหวะนี้</p>
+        </div>
+      </div>
     </section>
   </div>
 </div>
@@ -486,7 +516,8 @@ input[type="range"] { width: 100%; accent-color: var(--teal); min-width: 0; }
       { name: 'Bridge', bars: 2, beats: 3, noteValue: 4, bpm: 96 },
       { name: 'Chorus', bars: 8, beats: 4, noteValue: 4, bpm: 100 }
     ],
-    visualOffset: 0, silent: false
+    visualOffset: 0, silent: false,
+    exLen: 16, exUnit: 'bars', exRate: 44100, exMutes: false
   };
   const clone = (o) => JSON.parse(JSON.stringify(o));
   const BUILTIN = [
@@ -529,20 +560,20 @@ input[type="range"] { width: 100%; accent-color: var(--teal); min-width: 0; }
   }
   const NOTE_GLYPH = { 2: '𝅗𝅥', 4: '♩', 8: '♪', 16: '𝅘𝅥𝅯' };
   const UNIT_LEN = { '2': 1/2, '2.': 3/4, '4': 1/4, '4.': 3/8, '8': 1/8, '8.': 3/16, '16': 1/16 };
-  const unitKey = () => String(state.advanced && state.beatUnit !== 'auto' ? state.beatUnit : state.noteValue);
+  const unitKey = (s = state) => String(s.advanced && s.beatUnit !== 'auto' ? s.beatUnit : s.noteValue);
   const unitGlyph = (k) => (NOTE_GLYPH[parseInt(k, 10)] || '♩') + (k.endsWith('.') ? '.' : '');
   // clicks per bar and seconds per click, honouring the advanced BPM unit (e.g. ♩. in 6/8)
-  function meter() {
-    const d = 1 / state.noteValue, u = UNIT_LEN[unitKey()] || d;
-    if (state.advanced && state.beatUnit !== 'auto' && state.clickUnit) {
-      const n = state.beats * d / u;
-      if (n >= 1 && Math.abs(n - Math.round(n)) < 1e-9) return { beats: Math.round(n), dur: 60 / state.bpm, grouped: true };
+  function meter(s = state) {
+    const d = 1 / s.noteValue, u = UNIT_LEN[unitKey(s)] || d;
+    if (s.advanced && s.beatUnit !== 'auto' && s.clickUnit) {
+      const n = s.beats * d / u;
+      if (n >= 1 && Math.abs(n - Math.round(n)) < 1e-9) return { beats: Math.round(n), dur: 60 / s.bpm, grouped: true, len: u };
     }
-    return { beats: state.beats, dur: 60 / state.bpm * d / u, grouped: false };
+    return { beats: s.beats, dur: 60 / s.bpm * d / u, grouped: false, len: d };
   }
-  function beatSub(i) {
-    if (state.advanced && state.gridOn && state.grid[i]) return state.grid[i];
-    return { n: state.subdiv, mask: null };
+  function beatSub(i, s = state) {
+    if (s.advanced && s.gridOn && s.grid[i]) return s.grid[i];
+    return { n: s.subdiv, mask: null };
   }
   const songActive = () => state.advanced && state.songOn && state.song.length > 0;
 
@@ -569,6 +600,7 @@ input[type="range"] { width: 100%; accent-color: var(--teal); min-width: 0; }
     // real metronomes slide the weight up for slower tempos
     const t = clamp((state.bpm - 40) / (208 - 40), 0, 1);
     $('weight').style.top = (8 + t * 62) + '%';
+    if (!$('exportPane').hidden) updateExportSummary();
   }
   document.querySelectorAll('[data-nudge]').forEach(b => b.addEventListener('click', () => setBpm(state.bpm + parseFloat(b.dataset.nudge))));
   $('bpmRange').addEventListener('input', e => setBpm(+e.target.value));
@@ -652,6 +684,7 @@ input[type="range"] { width: 100%; accent-color: var(--teal); min-width: 0; }
     document.querySelectorAll('.adv-only').forEach(g => g.hidden = !state.advanced);
     $('clickUnit').disabled = state.beatUnit === 'auto';
     $('gridRows').classList.toggle('disabled', !state.gridOn);
+    if (!$('exportPane').hidden) updateExportSummary();
     if (master && ctx) master.gain.setTargetAtTime(masterLevel(), ctx.currentTime, 0.02);
   }
   const masterLevel = () => state.advanced && state.silent ? 0 : state.master;
@@ -672,7 +705,7 @@ input[type="range"] { width: 100%; accent-color: var(--teal); min-width: 0; }
     g.addEventListener('click', e => {
       const b = e.target.closest('button'); if (!b) return;
       const k = g.dataset.chip; const v = b.dataset.v;
-      state[k] = k === 'beatUnit' || isNaN(+v) ? v : +v;
+      state[k] = k === 'beatUnit' || k === 'exUnit' || isNaN(+v) ? v : +v;
       if (k === 'subdiv' || k === 'beatUnit' || k === 'noteValue') renderBeats();
       if (k === 'sound') preview();
       syncControls(); persist();
@@ -684,6 +717,7 @@ input[type="range"] { width: 100%; accent-color: var(--teal); min-width: 0; }
     document.querySelectorAll('[data-tab]').forEach(x => x.setAttribute('aria-selected', String(x === t)));
     document.querySelectorAll('[data-pane]').forEach(p => p.hidden = p.dataset.pane !== t.dataset.tab);
     try { localStorage.setItem('tb-tab', t.dataset.tab); } catch (e) {}
+    if (t.dataset.tab === 'export') setTimeout(updateExportSummary);
   }));
   try { const t = localStorage.getItem('tb-tab'); if (t) document.querySelector(`[data-tab="${t}"]`)?.click(); } catch (e) {}
 
@@ -695,40 +729,44 @@ input[type="range"] { width: 100%; accent-color: var(--teal); min-width: 0; }
     if (ctx) return;
     ctx = new (window.AudioContext || window.webkitAudioContext)();
     master = ctx.createGain(); master.gain.value = state.master; master.connect(ctx.destination);
-    noise = ctx.createBuffer(1, ctx.sampleRate * 0.3, ctx.sampleRate);
-    const d = noise.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    noise = makeNoise(ctx);
+  }
+  function makeNoise(c) {
+    const b = c.createBuffer(1, Math.round(c.sampleRate * 0.3), c.sampleRate);
+    const d = b.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    return b;
   }
   function env(g, t, peak, decay) {
     g.gain.setValueAtTime(0.0001, t);
     g.gain.exponentialRampToValueAtTime(peak, t + 0.0015);
     g.gain.exponentialRampToValueAtTime(0.0001, t + decay);
   }
-  function voice(t, freq, gain, accent) {
+  function voice(t, freq, gain, accent, c = ctx, out = master, nb = noise) {
     if (gain <= 0.001) return;
     const s = state.sound, peak = gain * SOUND_GAIN[s];
-    const g = ctx.createGain(); g.connect(master);
+    const g = c.createGain(); g.connect(out);
     if (s === 'click') {
-      const o = ctx.createOscillator(), f = ctx.createBiquadFilter();
+      const o = c.createOscillator(), f = c.createBiquadFilter();
       o.type = 'square'; o.frequency.value = freq; f.type = 'bandpass'; f.frequency.value = freq; f.Q.value = 3;
       o.connect(f); f.connect(g); env(g, t, peak, 0.035); o.start(t); o.stop(t + 0.05);
     } else if (s === 'beep') {
-      const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = freq;
+      const o = c.createOscillator(); o.type = 'sine'; o.frequency.value = freq;
       o.connect(g); env(g, t, peak, 0.09); o.start(t); o.stop(t + 0.11);
     } else if (s === 'wood') {
-      const o = ctx.createOscillator(); o.type = 'triangle';
+      const o = c.createOscillator(); o.type = 'triangle';
       o.frequency.setValueAtTime(freq * 0.62, t); o.frequency.exponentialRampToValueAtTime(freq * 0.5, t + 0.05);
       o.connect(g); env(g, t, peak, 0.07); o.start(t); o.stop(t + 0.09);
-      const n = ctx.createBufferSource(), f = ctx.createBiquadFilter(), ng = ctx.createGain();
-      n.buffer = noise; f.type = 'bandpass'; f.frequency.value = freq * 1.8; f.Q.value = 4;
-      n.connect(f); f.connect(ng); ng.connect(master); env(ng, t, peak * 0.6, 0.012); n.start(t); n.stop(t + 0.03);
+      const n = c.createBufferSource(), f = c.createBiquadFilter(), ng = c.createGain();
+      n.buffer = nb; f.type = 'bandpass'; f.frequency.value = freq * 1.8; f.Q.value = 4;
+      n.connect(f); f.connect(ng); ng.connect(out); env(ng, t, peak * 0.6, 0.012); n.start(t); n.stop(t + 0.03);
     } else if (s === 'cow') {
-      const base = freq * 0.42, f = ctx.createBiquadFilter();
+      const base = freq * 0.42, f = c.createBiquadFilter();
       f.type = 'bandpass'; f.frequency.value = base * 1.3; f.Q.value = 1.5; f.connect(g);
-      [base, base * 1.48].forEach(fr => { const o = ctx.createOscillator(); o.type = 'square'; o.frequency.value = fr; o.connect(f); o.start(t); o.stop(t + 0.3); });
+      [base, base * 1.48].forEach(fr => { const o = c.createOscillator(); o.type = 'square'; o.frequency.value = fr; o.connect(f); o.start(t); o.stop(t + 0.3); });
       env(g, t, peak, accent ? 0.28 : 0.18);
     } else if (s === 'hat') {
-      const n = ctx.createBufferSource(), f = ctx.createBiquadFilter();
-      n.buffer = noise; f.type = 'highpass'; f.frequency.value = Math.min(14000, freq * 4);
+      const n = c.createBufferSource(), f = c.createBiquadFilter();
+      n.buffer = nb; f.type = 'highpass'; f.frequency.value = Math.min(14000, freq * 4);
       n.connect(f); f.connect(g); env(g, t, peak, accent ? 0.11 : 0.045); n.start(t); n.stop(t + 0.15);
     }
   }
@@ -1116,6 +1154,154 @@ input[type="range"] { width: 100%; accent-color: var(--teal); min-width: 0; }
     $('resetAll').classList.add('armed'); $('resetAll').textContent = 'กดอีกครั้งเพื่อยืนยัน';
     resetAllT = setTimeout(() => disarmReset('คืนค่าเริ่มต้น'), 3000);
   });
+
+  /* ---------- Export: WAV / MIDI click track ---------- */
+  const EX_MAX_SEC = 30 * 60;
+  // Walks the same rules as the live scheduler (count-in, song sections, trainer, gap, grid, poly)
+  // and returns every click with its time in seconds and its position in MIDI ticks (480 per quarter).
+  function buildTimeline() {
+    const st = clone(state);
+    const song = st.advanced && st.songOn && st.song.length ? st.song : null;
+    const minutes = !song && st.exUnit === 'min';
+    const maxBars = song ? Infinity : (minutes ? Infinity : Math.max(1, Math.round(st.exLen)));
+    const maxSec = minutes ? Math.min(30, Math.max(1, st.exLen)) * 60 : EX_MAX_SEC;
+    const ev = [], metas = [];
+    let t = 0, tick = 0, bar = 0, rendered = 0, secIdx = 0, secBar = 0, sinceStep = 0, lastUs = 0, lastSig = '', tooLong = false;
+    const applySec = (i) => { const s = song[i]; st.beats = clamp(s.beats, 1, 16); st.noteValue = s.noteValue; st.bpm = clamp(s.bpm, 20, 400); };
+    if (song) applySec(0);
+    for (let b = 0; ; b++) {
+      const inCount = b < st.countIn;
+      if (!inCount) {
+        bar++;
+        if (song) {
+          secBar++;
+          if (secBar > song[secIdx].bars) { secBar = 1; secIdx++; if (secIdx >= song.length) break; applySec(secIdx); }
+        } else {
+          if (bar > maxBars) break;
+          if (st.trainerOn && bar > 1 && ++sinceStep >= st.trainerEvery) {
+            sinceStep = 0;
+            if (st.bpm < st.trainerTarget) st.bpm = Math.min(st.trainerTarget, round1(st.bpm + st.trainerStep));
+            else if (st.bpm > st.trainerTarget) st.bpm = Math.max(st.trainerTarget, round1(st.bpm - st.trainerStep));
+          }
+        }
+      }
+      if (t >= maxSec) { tooLong = !minutes; break; }
+      const m = meter(st), tpc = 480 * 4 * m.len;
+      const us = Math.round(m.dur / (m.len * 4) * 1e6), sig = st.beats + '/' + st.noteValue;
+      if (us !== lastUs || sig !== lastSig) { metas.push({ tick, us: us !== lastUs ? us : 0, sig: sig !== lastSig ? [st.beats, st.noteValue] : null }); lastUs = us; lastSig = sig; }
+      const gapMuted = st.exMutes && !inCount && st.gapOn && ((bar - 1) % (st.gapPlay + st.gapMute)) >= st.gapPlay;
+      for (let i = 0; i < m.beats; i++) {
+        const bt = t + i * m.dur, bk = tick + i * tpc;
+        const muted = gapMuted || (st.exMutes && !inCount && st.randomMute > 0 && Math.random() * 100 < st.randomMute);
+        if (muted) continue;
+        const lvl = inCount ? (i === 0 ? 3 : 2) : (st.accents[i] ?? 2);
+        if (lvl > 0) ev.push({ t: bt, tick: bk, kind: lvl === 3 ? 'accent' : 'beat', freq: lvl === 3 ? st.accentPitch : st.beatPitch, gain: [0, 0.3, 0.7, 1][lvl] * st.beatVol, accent: lvl === 3 });
+        if (inCount) continue;
+        const sb = beatSub(i, st);
+        if (sb.n > 1) subOffsets(sb.n).forEach((o, k) => {
+          if (k && (!sb.mask || sb.mask[k])) ev.push({ t: bt + o * m.dur, tick: bk + o * tpc, kind: 'sub', freq: st.subPitch, gain: st.subVol * 0.8, accent: false });
+        });
+        if (st.polyOn) for (let q = 0; q < st.poly; q++) {
+          const pos = q * m.beats / st.poly;
+          if (Math.floor(pos + 1e-9) === i) ev.push({ t: bt + (pos - i) * m.dur, tick: bk + (pos - i) * tpc, kind: 'poly', freq: st.polyPitch, gain: st.polyVol, accent: q === 0 });
+        }
+      }
+      t += m.beats * m.dur; tick += m.beats * tpc;
+      if (!inCount) rendered++;
+    }
+    ev.sort((a, b) => a.t - b.t);
+    return { ev, metas, duration: t, bars: rendered, tooLong, song: !!song };
+  }
+  const fmtClock = (sec) => `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, '0')}`;
+  function updateExportSummary() {
+    const tl = buildTimeline(), song = tl.song;
+    $('exLen').disabled = song;
+    document.querySelectorAll('[data-chip="exUnit"] button').forEach(b => b.disabled = song);
+    const mb = (tl.duration + 0.5) * state.exRate * 2 / 1048576;
+    $('exSummary').textContent = (song ? 'ทั้งโครงเพลง · ' : '') + `${tl.bars} ห้อง${state.countIn ? ` + นับนำ ${state.countIn}` : ''} · ${fmtClock(tl.duration)} · WAV ประมาณ ${mb.toFixed(1)} MB`
+      + (tl.tooLong ? ' · ยาวเกิน 30 นาที จะตัดที่ 30 นาที' : '');
+  }
+  function fileBase() {
+    if (state.advanced && state.songOn && state.song.length) return 'tempo-bench_song';
+    return `tempo-bench_${fmtBpm(state.bpm)}bpm_${state.beats}-${state.noteValue}`;
+  }
+  function saveFile(blob, name) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+  }
+  // Renders in 30 s chunks so long tracks don't need one huge OfflineAudioContext;
+  // each chunk renders 0.5 s extra and that tail is mixed into the start of the next chunk.
+  async function renderWav(tl, sr, onProgress) {
+    const TAIL = 0.5, CH = 30, total = Math.ceil((tl.duration + TAIL) * sr);
+    const pcm = new Int16Array(total);
+    let carry = null, ei = 0;
+    for (let c0 = 0; c0 < tl.duration + TAIL; c0 += CH) {
+      const len = Math.min(CH, tl.duration + TAIL - c0);
+      const oc = new OfflineAudioContext(1, Math.ceil((len + TAIL) * sr), sr);
+      const out = oc.createGain(); out.gain.value = state.master; out.connect(oc.destination);
+      const nb = makeNoise(oc);
+      while (ei < tl.ev.length && tl.ev[ei].t < c0 + len) { const e = tl.ev[ei++]; voice(e.t - c0, e.freq, e.gain, e.accent, oc, out, nb); }
+      const d = (await oc.startRendering()).getChannelData(0);
+      if (carry) for (let i = 0; i < carry.length && i < d.length; i++) d[i] += carry[i];
+      const off = Math.round(c0 * sr), keep = Math.min(Math.round((c0 + len) * sr) - off, total - off);
+      for (let i = 0; i < keep; i++) pcm[off + i] = Math.max(-1, Math.min(1, d[i])) * 32767;
+      carry = d.slice(keep);
+      onProgress(Math.min(1, (c0 + len) / (tl.duration + TAIL)));
+    }
+    const h = new DataView(new ArrayBuffer(44)), str = (o, x) => [...x].forEach((ch, i) => h.setUint8(o + i, ch.charCodeAt(0)));
+    str(0, 'RIFF'); h.setUint32(4, 36 + pcm.byteLength, true); str(8, 'WAVE'); str(12, 'fmt ');
+    h.setUint32(16, 16, true); h.setUint16(20, 1, true); h.setUint16(22, 1, true); h.setUint32(24, sr, true);
+    h.setUint32(28, sr * 2, true); h.setUint16(32, 2, true); h.setUint16(34, 16, true); str(36, 'data'); h.setUint32(40, pcm.byteLength, true);
+    return new Blob([h.buffer, pcm.buffer], { type: 'audio/wav' });
+  }
+  function buildMidi(tl) {
+    const NOTE = { accent: 76, beat: 77, sub: 42, poly: 37 };
+    const evs = [];
+    tl.metas.forEach(m => {
+      if (m.sig) evs.push({ tick: m.tick, o: 0, b: [0xFF, 0x58, 4, m.sig[0], Math.log2(m.sig[1]), 24, 8] });
+      if (m.us) evs.push({ tick: m.tick, o: 0, b: [0xFF, 0x51, 3, (m.us >> 16) & 255, (m.us >> 8) & 255, m.us & 255] });
+    });
+    tl.ev.forEach(e => {
+      const k = Math.round(e.tick), n = NOTE[e.kind], v = clamp(Math.round(e.gain * 127), 1, 127);
+      evs.push({ tick: k, o: 2, b: [0x99, n, v] }, { tick: k + 30, o: 1, b: [0x89, n, 0] });
+    });
+    evs.sort((a, b) => a.tick - b.tick || a.o - b.o);
+    const name = [...new TextEncoder().encode('Tempo Bench click')];
+    const trk = [0, 0xFF, 0x03, name.length, ...name];
+    const vlq = (n) => { const out = [n & 127]; while ((n >>= 7)) out.unshift((n & 127) | 128); return out; };
+    let last = 0;
+    evs.forEach(e => { trk.push(...vlq(e.tick - last), ...e.b); last = e.tick; });
+    trk.push(0, 0xFF, 0x2F, 0);
+    const u32 = (n) => [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255];
+    const bytes = [0x4D, 0x54, 0x68, 0x64, ...u32(6), 0, 0, 0, 1, 0x01, 0xE0, 0x4D, 0x54, 0x72, 0x6B, ...u32(trk.length), ...trk];
+    return new Blob([new Uint8Array(bytes)], { type: 'audio/midi' });
+  }
+  async function runExport(kind) {
+    const btns = [$('exWav'), $('exMidi')], status = $('exStatus');
+    btns.forEach(b => b.disabled = true);
+    try {
+      const tl = buildTimeline();
+      if (!tl.ev.length) { status.textContent = 'ไม่มีเสียงคลิกให้ส่งออก ตรวจว่าไม่ได้ตั้งทุกจังหวะเป็นเงียบ'; return; }
+      if (kind === 'midi') {
+        saveFile(buildMidi(tl), fileBase() + '.mid');
+        status.textContent = `สร้าง MIDI แล้ว · ${tl.ev.length} โน้ต · ${fmtClock(tl.duration)}`;
+      } else {
+        status.textContent = 'กำลังสร้าง WAV… 0%';
+        const blob = await renderWav(tl, state.exRate, p => status.textContent = `กำลังสร้าง WAV… ${Math.round(p * 100)}%`);
+        saveFile(blob, fileBase() + '.wav');
+        status.textContent = `สร้าง WAV แล้ว · ${fmtClock(tl.duration)} · ${(blob.size / 1048576).toFixed(1)} MB`;
+      }
+    } catch (e) {
+      status.textContent = 'สร้างไฟล์ไม่สำเร็จ: ' + (e && e.message || e) + ' ลองลดความยาวหรือใช้ 44.1 kHz';
+    } finally {
+      btns.forEach(b => b.disabled = false);
+    }
+  }
+  $('exWav').addEventListener('click', () => runExport('wav'));
+  $('exMidi').addEventListener('click', () => runExport('midi'));
+  try { $('exFrameNote').hidden = window.self === window.top; } catch (e) { $('exFrameNote').hidden = false; }
 
   /* ---------- Keyboard ---------- */
   document.addEventListener('keydown', e => {

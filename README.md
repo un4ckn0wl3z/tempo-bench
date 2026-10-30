@@ -8,6 +8,7 @@
 - เสียง Click / Woodblock / Beep / Cowbell / Hi-hat, ปรับความดังและ pitch แยกชั้น
 - ฝึกซ้อม: ไต่ความเร็ว, gap click, สุ่มเงียบ, นับนำ, ตั้งเวลาหยุด
 - พรีเซ็ต (เก็บใน localStorage)
+- ส่งออก click track เป็น **WAV** (16-bit mono, 44.1/48 kHz) และ **MIDI** (ช่อง 10, มี tempo map และ time signature) จากค่าที่ตั้งไว้ทั้งหมด รวมโครงเพลงและการไต่ความเร็ว ใช้เป็น click source ใน DAW ได้
 
 ### โหมด Advance
 
