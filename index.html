@@ -95,6 +95,7 @@ input[type="range"] { width: 100%; accent-color: var(--teal); min-width: 0; }
 .tempo-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .num { width: 92px; border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 6px 8px; font-family: var(--font-num); font-variant-numeric: tabular-nums; min-height: 38px; }
 .tap { font-family: var(--font-ui); font-weight: 700; letter-spacing: .1em; padding: 6px 18px; }
+.tap small { font-weight: 500; letter-spacing: 0; margin-left: 4px; opacity: .75; }
 .tap.hit { background: var(--teal); color: var(--on-accent); border-color: var(--teal); }
 
 .beats-wrap { display: grid; gap: 8px; }
@@ -262,7 +263,7 @@ input[type="range"] { width: 100%; accent-color: var(--teal); min-width: 0; }
         <input type="number" class="num" id="bpmNum" min="20" max="400" step="0.1">
         <button class="btn" data-nudge="-0.1">−0.1</button>
         <button class="btn" data-nudge="0.1">+0.1</button>
-        <button class="btn tap" id="tapBtn">TAP</button>
+        <button class="btn tap" id="tapBtn" title="แตะตามจังหวะเพลง 2 ครั้งขึ้นไป ระบบจะคำนวณ BPM ให้ (คีย์ลัด T)">TAP <small>แตะหา BPM</small></button>
       </div>
 
       <div class="beats-wrap">
@@ -475,7 +476,7 @@ input[type="range"] { width: 100%; accent-color: var(--teal); min-width: 0; }
     bpm: 120, beats: 4, noteValue: 4, accents: [3, 2, 2, 2], subdiv: 1, swing: 50,
     sound: 'click', master: 0.8, beatVol: 1, subVol: 0.45, polyVol: 0.6,
     accentPitch: 1760, beatPitch: 1320, subPitch: 880, polyPitch: 620,
-    polyOn: false, poly: 3, flash: true, swingArm: true,
+    polyOn: false, poly: 3, flash: true, swingArm: !matchMedia('(prefers-reduced-motion: reduce)').matches,
     trainerOn: false, trainerStep: 2, trainerEvery: 4, trainerTarget: 140,
     gapOn: false, gapPlay: 2, gapMute: 2, randomMute: 0, stopAfter: 0, countIn: 0,
     advanced: false, beatUnit: 'auto', clickUnit: true, gridOn: false, grid: [],
@@ -864,7 +865,6 @@ input[type="range"] { width: 100%; accent-color: var(--teal); min-width: 0; }
   $('playBtn').addEventListener('click', () => playing ? stop() : start());
 
   /* ---------- Visuals ---------- */
-  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   let flashT;
   function applyEvent(e) {
     if (e.kind === 'beat') {
@@ -915,7 +915,7 @@ input[type="range"] { width: 100%; accent-color: var(--teal); min-width: 0; }
     while (vq.length && vq[0].t <= now) applyEvent(vq.shift());
     const el = Math.max(0, ctx.currentTime - startAt);
     $('stTime').textContent = `${Math.floor(el / 60)}:${String(Math.floor(el % 60)).padStart(2, '0')}`;
-    if (lastBeatEv && state.swingArm && !reduceMotion) {
+    if (lastBeatEv && state.swingArm) {
       const p = clamp((now - lastBeatEv.t) / lastBeatEv.dur, 0, 1);
       const dir = lastBeatEv.n % 2 ? -1 : 1;
       $('rod').style.transform = `rotate(${dir * 24 * Math.cos(Math.PI * p)}deg)`;
