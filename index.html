@@ -252,6 +252,8 @@ canvas.wave.zoom { height: 72px; }
 .pos span:last-child { font-size: .8rem; color: var(--muted); }
 .vol { display: inline-flex; align-items: center; gap: 8px; font-size: .8rem; color: var(--muted); }
 .vol input { width: 110px; }
+.tracks { display: grid; gap: 6px; }
+.tracks .chips button[aria-pressed="false"] { text-decoration: line-through; opacity: .55; }
 .map-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
 .barmap { display: flex; flex-wrap: wrap; align-content: flex-start; gap: 4px; max-height: 62vh; overflow: auto; padding: 2px; user-select: none; -webkit-user-select: none; }
 .secrow { flex-basis: 100%; font-size: .74rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--brass); padding-top: 6px; }
@@ -619,10 +621,14 @@ canvas.wave.zoom { height: 72px; }
         <label class="switch"><input type="checkbox" id="labLoop">วนช่วงที่เลือก</label>
         <label class="switch"><input type="checkbox" id="labCountIn">นับนำ 1 ห้อง</label>
         <label class="switch"><input type="checkbox" id="labFollow" checked>เลื่อนตามตำแหน่งเล่น</label>
-        <label class="vol" id="labSongVolRow"><span>เพลง</span><input type="range" id="labSongVol" min="0" max="1" step="0.01" value="0.9"></label>
+        <label class="vol" id="labSongVolRow"><span id="labSongVolLabel">เพลง</span><input type="range" id="labSongVol" min="0" max="1" step="0.01" value="0.9"></label>
         <label class="vol"><span>คลิก</span><input type="range" id="labClickVol" min="0" max="1" step="0.01" value="0.9"></label>
       </div>
-      <p class="hint">เสียงคลิก ระดับเสียงสูงต่ำ และความดังของจังหวะหลักกับโน้ตที่ซอย ใช้ค่าจากแท็บเสียงของหน้าเมโทรนอม</p>
+      <div class="tracks" id="labTracksRow" hidden>
+        <span class="meta">แทร็กจากไฟล์ แตะเพื่อปิดเสียงส่วนที่จะเล่นเอง</span>
+        <div class="chips" id="labTracks"></div>
+      </div>
+      <p class="hint">เสียงคลิก ระดับเสียงสูงต่ำ และความดังของจังหวะหลักกับโน้ตที่ซอย ใช้ค่าจากแท็บเสียงของหน้าเมโทรนอม ไฟล์ Guitar Pro และ MIDI เล่นโน้ตด้วยเสียงสังเคราะห์ตามกลุ่มเครื่องดนตรี</p>
     </div>
 
     <div class="lab-main">
@@ -676,6 +682,7 @@ canvas.wave.zoom { height: 72px; }
           <div class="chips" id="lxStart">
             <button data-v="song">เริ่มไฟล์ที่ต้นเพลง</button><button data-v="range">เริ่มไฟล์ที่ห้องแรกของช่วง</button>
           </div>
+          <label class="switch" id="lxNotesRow" hidden><input type="checkbox" id="lxNotes">ใส่เสียงโน้ตจากไฟล์ใน WAV (เฉพาะแทร็กที่เปิดเสียงอยู่)</label>
           <p class="hint" id="lxHint"></p>
           <div class="tempo-tools">
             <button class="btn txt" id="lxWav" type="button">ดาวน์โหลด WAV</button>
@@ -1452,19 +1459,26 @@ canvas.wave.zoom { height: 72px; }
   // Renders in 30 s chunks so long tracks don't need one huge OfflineAudioContext;
   // each chunk renders 0.5 s extra and that tail is mixed into the start of the next chunk.
   async function renderWav(tl, sr, onProgress) {
-    const TAIL = 0.5, CH = 30, total = Math.ceil((tl.duration + TAIL) * sr);
+    const notes = tl.notes || [];
+    // long notes ring past their chunk: render enough tail to carry them into the next one
+    const TAIL = notes.length ? Math.min(8.5, 0.6 + Math.max(...notes.map(n => n.end - n.t))) : 0.5, CH = 30, total = Math.ceil((tl.duration + TAIL) * sr);
     const pcm = new Int16Array(total);
-    let carry = null, ei = 0;
+    let carry = null, ei = 0, ni = 0;
     for (let c0 = 0; c0 < tl.duration + TAIL; c0 += CH) {
       const len = Math.min(CH, tl.duration + TAIL - c0);
       const oc = new OfflineAudioContext(1, Math.ceil((len + TAIL) * sr), sr);
       const out = oc.createGain(); out.gain.value = state.master; out.connect(oc.destination);
       const nb = makeNoise(oc);
       while (ei < tl.ev.length && tl.ev[ei].t < c0 + len) { const e = tl.ev[ei++]; voice(e.t - c0, e.freq, e.gain, e.accent, oc, out, nb); }
+      if (ni < notes.length) {
+        const bus = oc.createDynamicsCompressor(), ng = oc.createGain(); ng.gain.value = tl.notesGain ?? 1; bus.connect(ng); ng.connect(oc.destination);
+        while (ni < notes.length && notes[ni].t < c0 + len) { const n = notes[ni++]; playNote(oc, bus, nb, n, n.t - c0, n.end - n.t); }
+      }
       const d = (await oc.startRendering()).getChannelData(0);
       if (carry) for (let i = 0; i < carry.length && i < d.length; i++) d[i] += carry[i];
       const off = Math.round(c0 * sr), keep = Math.min(Math.round((c0 + len) * sr) - off, total - off);
-      for (let i = 0; i < keep; i++) pcm[off + i] = Math.max(-1, Math.min(1, d[i])) * 32767;
+      // soft limit above 0.9 so dense note mixes don't clip; quieter material passes through unchanged
+      for (let i = 0; i < keep; i++) { const v = d[i], m = Math.abs(v); pcm[off + i] = (m > 0.9 ? Math.sign(v) * (0.9 + 0.1 * Math.tanh((m - 0.9) / 0.1)) : v) * 32767; }
       carry = d.slice(keep);
       onProgress(Math.min(1, (c0 + len) / (tl.duration + TAIL)));
     }
@@ -1534,7 +1548,7 @@ canvas.wave.zoom { height: 72px; }
   const DEMO_CFG = { 9: { subdiv: 2 }, 10: { subdiv: 2 }, 11: { subdiv: 2 }, 12: { mute: true }, 15: { subdiv: 4 }, 16: { subdiv: 4 },
     17: { pattern: 2, subdiv: 4 }, 18: { pattern: 2, subdiv: 4 }, 23: { group: true }, 24: { group: true } };
   const lab = { src: null, song: null, ev: [], cells: [], base: { bpm: 120, num: 4, den: 4, offset: 0 }, cfg: {},
-    sel: { from: 1, to: 1 }, anchor: 0, exStart: 'song', repeats: true, key: '', nowBar: 0, colors: null, zoomStart: 0 };
+    sel: { from: 1, to: 1 }, anchor: 0, exStart: 'song', repeats: true, muted: new Set(), key: '', nowBar: 0, colors: null, zoomStart: 0 };
   const lp = { playing: false, T0: 0, pos0: 0, segEnd: 0, ei: 0, src: null, done: false, stopAt: 0, lastTau: 0, songGain: null, clickGain: null };
   const cfgOf = (n) => Object.assign({}, LAB_DEFAULT, lab.cfg[n]);
   const fmtTime = (s) => { s = Math.max(0, s); return `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, '0')}`; };
@@ -1609,23 +1623,42 @@ canvas.wave.zoom { height: 72px; }
       tick += len;
     });
     if (!lin.tempos.length || lin.tempos[0].tick > 0) lin.tempos.unshift({ tick: 0, bpm: score.tempo || 120 });
-    // playback order (repeats, alternate endings) from alphaTab's own MIDI tick lookup
-    let rep = null;
-    if (mbs.some(m => m.isRepeatStart || m.repeatCount > 0 || m.alternateEndings)) {
-      try {
-        const mf = new at.midi.MidiFile();
-        const gen = new at.midi.MidiFileGenerator(score, settings, new at.midi.AlphaSynthMidiFileHandler(mf));
-        gen.generate();
+    // alphaTab's own MIDI generator gives the playback order (repeats, alternate endings) and the notes
+    let rep = null, notesByBar = null;
+    const channels = [];
+    try {
+      const mf = new at.midi.MidiFile();
+      const gen = new at.midi.MidiFileGenerator(score, settings, new at.midi.AlphaSynthMidiFileHandler(mf));
+      gen.generate();
+      const played = gen.tickLookup.masterBars;
+      if (mbs.some(m => m.isRepeatStart || m.repeatCount > 0 || m.alternateEndings)) {
         rep = { ppq: PPQ, bars: [], tempos: [] };
-        gen.tickLookup.masterBars.forEach(l => {
+        played.forEach(l => {
           const m = l.masterBar;
           rep.bars.push({ orig: m.index + 1, tick: l.start, len: l.end - l.start, num: m.timeSignatureNumerator, den: m.timeSignatureDenominator, section: sectionOf(m) });
           (l.tempoChanges || []).forEach(t => rep.tempos.push({ tick: t.tick, bpm: t.tempo }));
         });
         if (!rep.bars.length || rep.bars.length > 4000) rep = null;
-      } catch (e) { rep = null; }
-    }
-    return { kind: 'gp', title: score.title || name.replace(/\.[^.]+$/, ''), artist: score.artist || '', lin, rep };
+      }
+      // keep each written bar's notes from its first pass, relative to the bar start, so any bar order can reuse them
+      const T = at.midi.MidiEventType, notes = pairNotes((mf.events || []).map(e => e.type === T.NoteOn ? { tick: e.tick, on: true, ch: e.channel, key: e.noteKey, vel: e.noteVelocity }
+        : e.type === T.NoteOff ? { tick: e.tick, on: false, ch: e.channel, key: e.noteKey } : e.type === T.ProgramChange ? { tick: e.tick, program: e.program, ch: e.channel } : null).filter(Boolean));
+      const firstPass = new Map();
+      played.forEach((l, i) => { if (!firstPass.has(l.masterBar.index)) firstPass.set(l.masterBar.index, i); });
+      notesByBar = mbs.map(() => []);
+      for (const n of notes) {
+        let lo = 0, hi = played.length - 1;
+        while (lo < hi) { const m = (lo + hi + 1) >> 1; if (played[m].start <= n.tick) lo = m; else hi = m - 1; }
+        const l = played[lo];
+        if (l && firstPass.get(l.masterBar.index) === lo) notesByBar[l.masterBar.index].push({ ...n, rel: n.tick - l.start });
+      }
+      score.tracks.forEach(t => {
+        const info = t.playbackInfo, drums = t.staves.some(st => st.isPercussion);
+        const chs = (drums ? [9] : [info.primaryChannel, info.secondaryChannel]).filter((ch, i, all) => ch != null && all.indexOf(ch) === i && !channels.some(c => c.chs.includes(ch)));
+        if (chs.length) channels.push({ chs, name: t.name || (drums ? 'กลอง' : `แทร็ก ${t.index + 1}`) });
+      });
+    } catch (e) { rep = null; notesByBar = null; }
+    return { kind: 'gp', title: score.title || name.replace(/\.[^.]+$/, ''), artist: score.artist || '', lin, rep, notesByBar, channels };
   }
   function loadMidi(buf, name) {
     const u8 = new Uint8Array(buf), dv = new DataView(buf);
@@ -1633,11 +1666,12 @@ canvas.wave.zoom { height: 72px; }
     if (u8.length < 14 || id(0) !== 'MThd') throw new Error('ไม่ใช่ไฟล์ MIDI');
     const ntr = dv.getUint16(10), ppq = dv.getUint16(12);
     if (ppq & 0x8000 || !ppq) throw new Error('ไฟล์ MIDI แบบ SMPTE time code ยังไม่รองรับ');
-    const tempos = [], sigs = [], markers = [], dec = new TextDecoder();
+    const tempos = [], sigs = [], markers = [], raw = [], chName = {}, dec = new TextDecoder();
     let p = 8 + dv.getUint32(4), end = 0, title = '';
     for (let tr = 0; tr < ntr && p + 8 <= u8.length; tr++) {
       const cid = id(p), stop = Math.min(u8.length, p + 8 + dv.getUint32(p + 4));
-      let q = p + 8, tick = 0, run = 0;
+      let q = p + 8, tick = 0, run = 0, trackName = '';
+      const used = new Set();
       const vlq = () => { let v = 0, b; do { b = u8[q++]; v = v * 128 + (b & 127); } while (b & 128 && q < stop); return v; };
       while (cid === 'MTrk' && q < stop) {
         tick += vlq();
@@ -1648,11 +1682,17 @@ canvas.wave.zoom { height: 72px; }
           if (type === 0x51 && l >= 3) tempos.push({ tick, bpm: 60e6 / ((d[0] << 16) | (d[1] << 8) | d[2]) });
           else if (type === 0x58 && l >= 2) sigs.push({ tick, num: d[0], den: 2 ** d[1] });
           else if (type === 0x06 && l) markers.push({ tick, text: dec.decode(d).trim() });
-          else if (type === 0x03 && !title && l) title = dec.decode(d).trim();
+          else if (type === 0x03 && l) { trackName = dec.decode(d).trim(); if (!title) title = trackName; }
           else if (type === 0x2F) { end = Math.max(end, tick); break; }
         } else if (st === 0xF0 || st === 0xF7) { q += vlq(); }
-        else { run = st; const hi = st & 0xF0; q += hi === 0xC0 || hi === 0xD0 ? 1 : 2; if (hi === 0x80 || hi === 0x90) end = Math.max(end, tick); }
+        else {
+          run = st; const hi = st & 0xF0, ch = st & 15, d1 = u8[q], d2 = u8[q + 1];
+          q += hi === 0xC0 || hi === 0xD0 ? 1 : 2;
+          if (hi === 0x80 || hi === 0x90) { raw.push({ tick, on: hi === 0x90 && d2 > 0, ch, key: d1, vel: d2, tr }); used.add(ch); end = Math.max(end, tick); }
+          else if (hi === 0xC0) raw.push({ tick, program: d1, ch });
+        }
       }
+      used.forEach(ch => { if (!chName[ch] && trackName) chName[ch] = trackName; });
       p = stop;
     }
     sigs.sort((a, b) => a.tick - b.tick);
@@ -1668,8 +1708,76 @@ canvas.wave.zoom { height: 72px; }
     }
     tempos.sort((a, b) => a.tick - b.tick);
     if (!tempos.length || tempos[0].tick > 0) tempos.unshift({ tick: 0, bpm: tempos[0] ? tempos[0].bpm : 120 });
-    return { kind: 'midi', title: title || name.replace(/\.[^.]+$/, ''), lin: { ppq, bars, tempos }, rep: null };
+    const notes = pairNotes(raw.sort((a, b) => a.tick - b.tick), end);
+    const channels = [...new Set(notes.map(n => n.ch))].sort((a, b) => a - b).map(ch => ({ chs: [ch], name: chName[ch] && chName[ch] !== title ? chName[ch] : ch === 9 ? 'กลอง' : gmName(notes.find(n => n.ch === ch).program) }));
+    return { kind: 'midi', title: title || name.replace(/\.[^.]+$/, ''), lin: { ppq, bars, tempos }, rep: null, notes, channels };
   }
+  // Turn note-on/off and program-change events (sorted by tick) into notes with a duration and the channel's program.
+  function pairNotes(events, endTick) {
+    const open = new Map(), prog = new Array(16).fill(0), notes = [];
+    for (const e of events) {
+      if (e.program !== undefined) { prog[e.ch] = e.program; continue; }
+      const k = e.ch * 128 + e.key;
+      if (e.on) { if (!open.has(k)) open.set(k, []); open.get(k).push({ tick: e.tick, vel: e.vel, program: prog[e.ch] }); }
+      else { const o = open.get(k)?.shift(); if (o) notes.push({ tick: o.tick, dur: Math.max(1, e.tick - o.tick), key: e.key, vel: o.vel, ch: e.ch, program: o.program }); }
+    }
+    if (endTick != null) open.forEach((list, k) => list.forEach(o => notes.push({ tick: o.tick, dur: Math.max(1, endTick - o.tick), key: k % 128, vel: o.vel, ch: k >> 7, program: o.program })));
+    return notes.sort((a, b) => a.tick - b.tick);
+  }
+  const GM_FAMILY = ['เปียโน', 'Chromatic perc.', 'ออร์แกน', 'กีตาร์', 'เบส', 'เครื่องสาย', 'Ensemble', 'Brass', 'Reed', 'Pipe', 'Synth lead', 'Synth pad', 'Synth FX', 'Ethnic', 'Percussive', 'Sound FX'];
+  const gmName = (p) => p >= 29 && p <= 30 ? 'กีตาร์ distortion' : p >= 26 && p <= 28 ? 'กีตาร์ไฟฟ้า' : GM_FAMILY[(p | 0) >> 3] || 'แทร็ก';
+
+  /* note synth: one simple voice per General MIDI family, plus a synthesized drum kit on channel 10 */
+  const shaperCurves = new WeakMap();
+  function distortion(c) {
+    if (!shaperCurves.has(c)) { const curve = new Float32Array(1024); for (let i = 0; i < 1024; i++) curve[i] = Math.tanh((i / 511.5 - 1) * 5); shaperCurves.set(c, curve); }
+    const ws = c.createWaveShaper(); ws.curve = shaperCurves.get(c); return ws;
+  }
+  function playNote(c, out, nb, n, t, dur) {
+    const v = Math.pow(n.vel / 127, 1.4);
+    if (n.drum) return playDrum(c, out, nb, n.key, t, v);
+    const p = n.program | 0, fam = p >> 3, f = 440 * Math.pow(2, (n.key - 69) / 12), d = Math.max(0.04, dur);
+    const g = c.createGain(); g.connect(out);
+    const osc = (type, freq, cents = 0) => { const o = c.createOscillator(); o.type = type; o.frequency.value = freq; o.detune.value = cents; return o; };
+    const lowpass = (from, to) => { const fl = c.createBiquadFilter(); fl.type = 'lowpass'; fl.frequency.setValueAtTime(from, t); if (to) fl.frequency.exponentialRampToValueAtTime(to, t + Math.min(d, 1.2)); fl.connect(g); return fl; };
+    let srcs, input = g, atk = 0.005, peak = 0.14, sustain = 0.7, decay = 0.4, rel = 0.12;
+    if (fam <= 1) { srcs = [osc('triangle', f), osc('sine', f * 2)]; sustain = 0; decay = fam ? 0.5 : Math.min(2.4, 0.6 + 260 / f); peak = 0.16; }
+    else if (fam === 2) { srcs = [osc('sine', f), osc('sine', f * 2), osc('sine', f * 3)]; peak = 0.07; sustain = 1; }
+    else if (fam === 3 && p >= 29 && p <= 31) { // overdrive / distortion guitar
+      srcs = [osc('sawtooth', f), osc('sawtooth', f, 9)];
+      const pre = c.createGain(), ws = distortion(c); pre.gain.value = 2.5; pre.connect(ws); ws.connect(lowpass(3400, 1800)); input = pre; peak = 0.08; sustain = 0.8;
+    }
+    else if (fam === 3) { srcs = [osc('sawtooth', f), osc('triangle', f, 5)]; input = lowpass(3200, 600); sustain = 0; decay = 1.4; peak = 0.16; }
+    else if (fam === 4) { srcs = [osc('sawtooth', f), osc('sine', f)]; input = lowpass(Math.min(1400, f * 10), Math.min(700, f * 5)); peak = 0.22; sustain = 0.5; decay = 0.6; }
+    else if (fam === 5 || fam === 6 || fam === 11) { srcs = [osc('sawtooth', f, -9), osc('sawtooth', f, 9)]; input = lowpass(2400); atk = 0.07; rel = 0.3; peak = 0.07; sustain = 0.9; }
+    else if (fam === 7) { srcs = [osc('sawtooth', f)]; input = lowpass(2200); atk = 0.03; peak = 0.09; }
+    else if (fam === 8 || fam === 9) { srcs = [osc('square', f), osc('triangle', f)]; input = lowpass(1900); atk = 0.03; peak = 0.07; sustain = 0.85; }
+    else if (fam === 10) { srcs = [osc('square', f), osc('sawtooth', f, 6)]; input = lowpass(3200); peak = 0.06; }
+    else { srcs = [osc('triangle', f)]; peak = 0.12; sustain = 0.4; }
+    peak *= v;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(peak, t + atk);
+    g.gain.setTargetAtTime(peak * sustain, t + atk, decay / 3);
+    g.gain.setTargetAtTime(0, t + Math.max(d, atk), rel / 3);
+    const stopAt = t + Math.max(d, atk) + rel * 2 + 0.05;
+    srcs.forEach(o => { o.connect(input); o.start(t); o.stop(stopAt); });
+  }
+  function playDrum(c, out, nb, key, t, v) {
+    const hit = (node, level, dec) => { const e = c.createGain(); node.connect(e); e.connect(out); e.gain.setValueAtTime(level * v, t); e.gain.exponentialRampToValueAtTime(0.0001, t + dec); return dec; };
+    const noise = (type, freq, q, level, dec) => { const s = c.createBufferSource(), fl = c.createBiquadFilter(); s.buffer = nb; s.loop = true; fl.type = type; fl.frequency.value = freq; fl.Q.value = q; s.connect(fl); hit(fl, level, dec); s.start(t); s.stop(t + dec + 0.02); };
+    const tone = (f0, f1, level, dec, type = 'sine') => { const o = c.createOscillator(); o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dec * 0.5); hit(o, level, dec); o.start(t); o.stop(t + dec + 0.02); };
+    const TOMS = { 41: 82, 43: 98, 45: 112, 47: 130, 48: 150, 50: 176 };
+    if (key === 35 || key === 36) { tone(150, 44, 0.9, 0.34); noise('lowpass', 1800, 0.7, 0.25, 0.025); }
+    else if (key === 38 || key === 40) { tone(210, 165, 0.32, 0.12, 'triangle'); noise('bandpass', 1900, 0.8, 0.55, 0.2); }
+    else if (key === 37 || key === 39) noise('bandpass', 2600, 2, 0.5, 0.05);
+    else if (key === 42 || key === 44) noise('highpass', 7500, 0.7, 0.32, 0.05);
+    else if (key === 46) noise('highpass', 7000, 0.7, 0.28, 0.32);
+    else if (TOMS[key]) tone(TOMS[key] * 1.6, TOMS[key], 0.7, 0.36);
+    else if (key === 49 || key === 52 || key === 55 || key === 57) noise('highpass', 5200, 0.5, 0.26, 1.3);
+    else if (key === 51 || key === 53 || key === 59) { noise('bandpass', 6500, 1.2, 0.17, 0.6); tone(3300, 3200, 0.03, 0.45, 'square'); }
+    else noise('bandpass', 3000, 1, 0.3, 0.08);
+  }
+
   function demoSource() {
     const ppq = 960, bars = [], tempos = [{ tick: 0, bpm: 100 }];
     let tick = 0;
@@ -1712,8 +1820,13 @@ canvas.wave.zoom { height: 72px; }
     const bpmAt = (tick) => tm[idxAt(tick)].bpm;
     const off = src.kind === 'audio' ? lab.base.offset : 0;
     const bars = raw.bars.map((b, i) => ({ ...b, n: i + 1, t: off + secAt(b.tick), end: off + secAt(b.tick + b.len), bpm: bpmAt(b.tick) }));
-    lab.song = { ppq, tm, secAt, bpmAt, bars, off, end: src.kind === 'audio' ? src.duration : bars[bars.length - 1].end };
+    let notes = [];
+    if (src.notesByBar) raw.bars.forEach(b => (src.notesByBar[b.orig - 1] || []).forEach(n => notes.push({ ...n, tick: b.tick + n.rel })));
+    else if (src.notes) notes = src.notes;
+    lab.song = { ppq, tm, secAt, bpmAt, bars, off, end: src.kind === 'audio' ? src.duration : bars[bars.length - 1].end,
+      notes: notes.map(n => ({ t: off + secAt(n.tick), end: off + secAt(n.tick + n.dur), key: n.key, vel: n.vel, ch: n.ch, program: n.program, drum: n.ch === 9 })).sort((a, b) => a.t - b.t) };
   }
+  const firstNote = (tau) => { const ns = lab.song.notes; let lo = 0, hi = ns.length; while (lo < hi) { const m = (lo + hi) >> 1; if (ns[m].t < tau) lo = m + 1; else hi = m; } return lo; };
   function labEvents(from, to) {
     const { bars, secAt, ppq, off } = lab.song, ev = [];
     for (let n = from; n <= to; n++) {
@@ -1762,17 +1875,31 @@ canvas.wave.zoom { height: 72px; }
     const N = lab.song.bars.length, s = saved.sel || { from: 1, to: Math.min(N, 8) };
     lab.sel = { from: clamp(Math.min(s.from, s.to), 1, N), to: clamp(Math.max(s.from, s.to), 1, N) };
     const audio = src.kind === 'audio';
-    $('labAlign').hidden = !audio; $('labTop').classList.toggle('solo', !audio); $('labSongVolRow').hidden = !audio; $('lcTempoGroup').hidden = !audio;
+    const hasNotes = !!((src.notes && src.notes.length) || (src.notesByBar && src.notesByBar.some(b => b.length)));
+    lab.muted = new Set();
+    $('labAlign').hidden = !audio; $('labTop').classList.toggle('solo', !audio); $('lcTempoGroup').hidden = !audio;
+    $('labSongVolRow').hidden = !(audio || hasNotes); $('labSongVolLabel').textContent = audio ? 'เพลง' : 'โน้ต';
+    $('lxNotesRow').hidden = !hasNotes;
+    renderTracks(hasNotes ? src.channels || [] : []);
     $('labRepeatsRow').hidden = !src.rep; $('labRepeats').checked = lab.repeats;
     syncAlignInputs();
     rebuild();
+  }
+  function renderTracks(list) {
+    $('labTracksRow').hidden = !list.length;
+    $('labTracks').replaceChildren(...list.map(c => {
+      const b = document.createElement('button'); b.type = 'button'; b.textContent = c.name; b.setAttribute('aria-pressed', 'true');
+      b.title = 'แตะเพื่อปิดหรือเปิดเสียงแทร็กนี้';
+      b.addEventListener('click', () => { const off = c.chs.some(ch => lab.muted.has(ch)); c.chs.forEach(ch => off ? lab.muted.delete(ch) : lab.muted.add(ch)); b.setAttribute('aria-pressed', String(off)); });
+      return b;
+    }));
   }
   function rebuild() {
     buildSong();
     const N = lab.song.bars.length;
     lab.sel.to = Math.min(lab.sel.to, N); lab.sel.from = Math.min(lab.sel.from, lab.sel.to);
     lab.ev = labEvents(1, N);
-    if (lp.playing) lp.ei = firstEv(lp.lastTau + 1e-6);
+    if (lp.playing) { lp.ei = firstEv(lp.lastTau + 1e-6); lp.ni = firstNote(lp.lastNoteTau + 1e-6); }
     renderInfo(); renderSections(); renderMap();
     drawZoom();
     saveLab();
@@ -2043,6 +2170,7 @@ canvas.wave.zoom { height: 72px; }
   function labGains() {
     if (!lp.clickGain) { lp.clickGain = ctx.createGain(); lp.clickGain.connect(ctx.destination); }
     if (!lp.songGain) { lp.songGain = ctx.createGain(); lp.songGain.connect(ctx.destination); }
+    if (!lp.noteBus) { lp.noteBus = ctx.createDynamicsCompressor(); lp.noteBus.connect(lp.songGain); }
     lp.clickGain.gain.value = +$('labClickVol').value * state.master;
     lp.songGain.gain.value = +$('labSongVol').value;
   }
@@ -2063,7 +2191,8 @@ canvas.wave.zoom { height: 72px; }
       for (let k = 0; k < a.num; k++) voice(begin + k * beat, k ? state.beatPitch : state.accentPitch, (k ? 0.7 : 1) * state.beatVol, !k, ctx, lp.clickGain, noise);
       lead = a.num * beat;
     }
-    Object.assign(lp, { playing: true, T0: begin + lead, pos0: a.t, done: false, lastTau: a.t - 1e-6 });
+    Object.assign(lp, { playing: true, T0: begin + lead, pos0: a.t, done: false, lastTau: a.t - 1e-6, lastNoteTau: a.t - 1e-6 });
+    lp.ni = firstNote(a.t - 1e-6);
     lp.segEnd = $('labLoop').checked ? lab.song.bars[lab.sel.to - 1].end : lab.song.end;
     lp.ei = firstEv(a.t - 1e-6);
     startSongAudio(lp.T0, a.t);
@@ -2079,13 +2208,18 @@ canvas.wave.zoom { height: 72px; }
         voice(lp.T0 + e.t - lp.pos0, e.freq, e.gain, e.accent, ctx, lp.clickGain, noise);
         lp.lastTau = e.t; lp.ei++; continue;
       }
+      const nt = lab.song.notes[lp.ni];
+      if (nt && nt.t < lp.segEnd - 1e-6 && lp.T0 + nt.t - lp.pos0 < horizon) {
+        if (!lab.muted.has(nt.ch)) playNote(ctx, lp.noteBus, noise, nt, lp.T0 + nt.t - lp.pos0, Math.min(nt.end, lp.segEnd) - nt.t);
+        lp.lastNoteTau = nt.t; lp.ni++; continue;
+      }
       const endAt = lp.T0 + lp.segEnd - lp.pos0;
       if (!lp.done && endAt < horizon) {
         if ($('labLoop').checked) {
           const a = lab.song.bars[lab.sel.from - 1];
           if (lp.src) try { lp.src.stop(endAt); } catch (_) {}
-          Object.assign(lp, { T0: endAt, pos0: a.t, segEnd: lab.song.bars[lab.sel.to - 1].end, lastTau: a.t - 1e-6 });
-          lp.ei = firstEv(a.t - 1e-6);
+          Object.assign(lp, { T0: endAt, pos0: a.t, segEnd: lab.song.bars[lab.sel.to - 1].end, lastTau: a.t - 1e-6, lastNoteTau: a.t - 1e-6 });
+          lp.ei = firstEv(a.t - 1e-6); lp.ni = firstNote(a.t - 1e-6);
           startSongAudio(endAt, a.t);
           continue;
         }
@@ -2101,8 +2235,8 @@ canvas.wave.zoom { height: 72px; }
     try { lp.src && lp.src.stop(); } catch (_) {}
     lp.src = null;
     // drop the gain nodes so clicks already queued ahead are silenced too
-    [lp.clickGain, lp.songGain].forEach(g => { try { g && g.disconnect(); } catch (_) {} });
-    lp.clickGain = lp.songGain = null;
+    [lp.clickGain, lp.songGain, lp.noteBus].forEach(g => { try { g && g.disconnect(); } catch (_) {} });
+    lp.clickGain = lp.songGain = lp.noteBus = null;
     syncWorker(); setLabIcon(false);
     if (lab.cells[lab.nowBar - 1]) lab.cells[lab.nowBar - 1].classList.remove('now');
     lab.nowBar = 0;
@@ -2168,7 +2302,10 @@ canvas.wave.zoom { height: 72px; }
       if (bar.section) m.marker = bar.section;
       if (m.sig || m.marker) metas.push(m);
     }
-    return { ev, metas, duration: b.end - t0 };
+    const notes = $('lxNotes').checked && !$('lxNotesRow').hidden
+      ? lab.song.notes.filter(n => n.t >= a.t - 1e-6 && n.t < b.end && !lab.muted.has(n.ch)).map(n => ({ ...n, t: n.t - t0, end: Math.min(n.end, b.end) - t0 }))
+      : [];
+    return { ev, metas, duration: b.end - t0, notes, notesGain: +$('labSongVol').value };
   }
   async function runLabExport(kind) {
     const btns = [$('lxWav'), $('lxMidi')], status = $('lxStatus');
