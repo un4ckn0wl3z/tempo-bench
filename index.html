@@ -488,7 +488,7 @@ input[type="range"] { width: 100%; accent-color: var(--teal); min-width: 0; }
             <button class="btn txt" id="exMidi" type="button">ดาวน์โหลด MIDI</button>
           </div>
           <p class="hint" id="exStatus" role="status"></p>
-          <p class="hint" id="exFrameNote" hidden>ถ้ากดแล้วไม่มีไฟล์ดาวน์โหลด แปลว่าหน้านี้ถูกฝังอยู่ในกรอบที่บล็อกการดาวน์โหลด ให้เปิดจาก <a href="https://un4ckn0wl3z.github.io/tempo-bench/" target="_blank" rel="noopener">un4ckn0wl3z.github.io/tempo-bench</a> แทน</p>
+          <p class="hint" id="exFrameNote" hidden>ในหน้านี้ไฟล์จะถูกห่อเป็น .zip ก่อนบันทึก ถ้าต้องการไฟล์ .wav / .mid ตรงๆ ให้เปิดจาก <a href="https://un4ckn0wl3z.github.io/tempo-bench/" target="_blank" rel="noopener">un4ckn0wl3z.github.io/tempo-bench</a></p>
         </div>
         <div class="group">
           <h3>รายละเอียดไฟล์</h3>
@@ -1225,11 +1225,36 @@ input[type="range"] { width: 100%; accent-color: var(--teal); min-width: 0; }
     if (state.advanced && state.songOn && state.song.length) return 'tempo-bench_song';
     return `tempo-bench_${fmtBpm(state.bpm)}bpm_${state.beats}-${state.noteValue}`;
   }
-  function saveFile(blob, name) {
+  // Inside the claude.ai viewer, downloads go through its `downloads` capability, which
+  // doesn't accept .wav/.mid, so the file is wrapped in an uncompressed .zip there.
+  const downloadsP = window.claude?.use ? window.claude.use('downloads').catch(() => null) : Promise.resolve(null);
+  const CRC_T = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+  async function zipStore(name, blob) {
+    const data = new Uint8Array(await blob.arrayBuffer()), fn = new TextEncoder().encode(name);
+    let crc = 0xFFFFFFFF; for (let i = 0; i < data.length; i++) crc = CRC_T[(crc ^ data[i]) & 255] ^ (crc >>> 8);
+    crc = (crc ^ 0xFFFFFFFF) >>> 0;
+    const lh = new DataView(new ArrayBuffer(30)), ch = new DataView(new ArrayBuffer(46)), eo = new DataView(new ArrayBuffer(22));
+    lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(12, 33, true); lh.setUint32(14, crc, true);
+    lh.setUint32(18, data.length, true); lh.setUint32(22, data.length, true); lh.setUint16(26, fn.length, true);
+    ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(14, 33, true); ch.setUint32(16, crc, true);
+    ch.setUint32(20, data.length, true); ch.setUint32(24, data.length, true); ch.setUint16(28, fn.length, true);
+    eo.setUint32(0, 0x06054b50, true); eo.setUint16(8, 1, true); eo.setUint16(10, 1, true);
+    eo.setUint32(12, 46 + fn.length, true); eo.setUint32(16, 30 + fn.length + data.length, true);
+    return new Blob([lh.buffer, fn, data, ch.buffer, fn, eo.buffer]);
+  }
+  // resolves to the name actually offered, or throws {code} from the viewer's save prompt
+  async function saveFile(blob, name) {
+    const dl = await downloadsP;
+    if (dl) {
+      const zipName = name.replace(/\.(\w+)$/, '_$1') + '.zip';
+      await dl.save({ filename: zipName, data: await zipStore(name, blob) });
+      return zipName;
+    }
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob); a.download = name;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+    return name;
   }
   // Renders in 30 s chunks so long tracks don't need one huge OfflineAudioContext;
   // each chunk renders 0.5 s extra and that tail is mixed into the start of the next chunk.
@@ -1285,23 +1310,27 @@ input[type="range"] { width: 100%; accent-color: var(--teal); min-width: 0; }
       const tl = buildTimeline();
       if (!tl.ev.length) { status.textContent = 'ไม่มีเสียงคลิกให้ส่งออก ตรวจว่าไม่ได้ตั้งทุกจังหวะเป็นเงียบ'; return; }
       if (kind === 'midi') {
-        saveFile(buildMidi(tl), fileBase() + '.mid');
-        status.textContent = `สร้าง MIDI แล้ว · ${tl.ev.length} โน้ต · ${fmtClock(tl.duration)}`;
+        const f = await saveFile(buildMidi(tl), fileBase() + '.mid');
+        status.textContent = `สร้าง ${f} แล้ว · ${tl.ev.length} โน้ต · ${fmtClock(tl.duration)}`;
       } else {
         status.textContent = 'กำลังสร้าง WAV… 0%';
         const blob = await renderWav(tl, state.exRate, p => status.textContent = `กำลังสร้าง WAV… ${Math.round(p * 100)}%`);
-        saveFile(blob, fileBase() + '.wav');
-        status.textContent = `สร้าง WAV แล้ว · ${fmtClock(tl.duration)} · ${(blob.size / 1048576).toFixed(1)} MB`;
+        const f = await saveFile(blob, fileBase() + '.wav');
+        status.textContent = `สร้าง ${f} แล้ว · ${fmtClock(tl.duration)} · ${(blob.size / 1048576).toFixed(1)} MB`;
       }
     } catch (e) {
-      status.textContent = 'สร้างไฟล์ไม่สำเร็จ: ' + (e && e.message || e) + ' ลองลดความยาวหรือใช้ 44.1 kHz';
+      const code = e && e.code;
+      if (code === 'declined') status.textContent = 'ยกเลิกการบันทึกไฟล์แล้ว';
+      else if (code === 'rate_limited') status.textContent = 'มีหน้าต่างบันทึกไฟล์เปิดค้างอยู่ รอสักครู่แล้วกดใหม่';
+      else if (code) status.textContent = 'บันทึกไฟล์ในหน้านี้ไม่ได้ ให้เปิดจาก un4ckn0wl3z.github.io/tempo-bench แทน';
+      else status.textContent = 'สร้างไฟล์ไม่สำเร็จ: ' + (e && e.message || e) + ' ลองลดความยาวหรือใช้ 44.1 kHz';
     } finally {
       btns.forEach(b => b.disabled = false);
     }
   }
   $('exWav').addEventListener('click', () => runExport('wav'));
   $('exMidi').addEventListener('click', () => runExport('midi'));
-  try { $('exFrameNote').hidden = window.self === window.top; } catch (e) { $('exFrameNote').hidden = false; }
+  downloadsP.then(dl => { $('exFrameNote').hidden = !dl; });
 
   /* ---------- Keyboard ---------- */
   document.addEventListener('keydown', e => {
