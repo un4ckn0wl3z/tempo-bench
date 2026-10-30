@@ -1,0 +1,816 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Tempo Bench — เมโทรนอมบนเว็บที่ตั้งค่าได้ละเอียด">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}</style>
+<title>Tempo Bench</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Azeret+Mono:wght@400;600&family=Bai+Jamjuree:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: instrument panel (pendulum + readout + beat grid) beside a tabbed settings bench; stacks on phones */
+:root {
+  --bg: #E7EBE9;
+  --panel: #F7F8F6;
+  --well: #DDE3E0;
+  --ink: #17201C;
+  --muted: #5B6863;
+  --line: #C9D1CD;
+  --brass: #A86E12;
+  --brass-soft: #F1DFBC;
+  --teal: #1D6B62;
+  --teal-soft: #CFE4DF;
+  --ghost: #93A69F;
+  --warn: #B23A2E;
+  --on-accent: #FFFFFF;
+  --font-ui: "Bai Jamjuree", "Noto Sans Thai", "Leelawadee UI", system-ui, sans-serif;
+  --font-num: "Azeret Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --r: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #101413; --panel: #181E1C; --well: #222A27; --ink: #E4EBE7; --muted: #8C9B95;
+    --line: #2C3633; --brass: #E3A940; --brass-soft: #3D2F15; --teal: #4DB3A4; --teal-soft: #173430;
+    --ghost: #4F625B; --warn: #F07A6A; --on-accent: #101413; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #101413; --panel: #181E1C; --well: #222A27; --ink: #E4EBE7; --muted: #8C9B95;
+  --line: #2C3633; --brass: #E3A940; --brass-soft: #3D2F15; --teal: #4DB3A4; --teal-soft: #173430;
+  --ghost: #4F625B; --warn: #F07A6A; --on-accent: #101413; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--font-ui); font-size: 15px; line-height: 1.5;
+  padding-block: 20px 40px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+.app { max-width: 1180px; margin: 0 auto; display: grid; gap: 18px; }
+header.top { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; }
+header.top h1 { margin: 0; font-size: 1.35rem; font-weight: 700; letter-spacing: .01em; }
+header.top h1 span { color: var(--brass); }
+header.top p { margin: 0; color: var(--muted); font-size: .85rem; }
+kbd { font-family: var(--font-num); font-size: .75rem; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; background: var(--panel); }
+
+.grid { display: grid; gap: 18px; grid-template-columns: 1fr; }
+@media (min-width: 920px) { .grid { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); align-items: start; } }
+
+.instrument { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 20px; display: grid; gap: 20px; position: relative; overflow: hidden; }
+.instrument::after { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .18s ease-out; background: var(--flash, transparent); }
+.instrument.flash-a::after { --flash: var(--brass-soft); opacity: .55; transition: none; }
+.instrument.flash-b::after { --flash: var(--teal-soft); opacity: .45; transition: none; }
+.instrument > * { position: relative; z-index: 1; }
+
+.face { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 20px; align-items: center; }
+.pend { width: 120px; height: 170px; position: relative; flex: none; }
+.pend .body { position: absolute; inset: 0; background: var(--well); clip-path: polygon(30% 0, 70% 0, 100% 100%, 0 100%); border-radius: 6px; }
+.pend .scale { position: absolute; left: 50%; top: 10px; bottom: 34px; width: 2px; transform: translateX(-50%); background: repeating-linear-gradient(to bottom, var(--line) 0 2px, transparent 2px 9px); }
+.pend .rod { position: absolute; left: 50%; bottom: 26px; width: 4px; height: 136px; margin-left: -2px; background: var(--ink); border-radius: 2px; transform-origin: 50% 100%; will-change: transform; }
+.pend .weight { position: absolute; left: 50%; width: 22px; height: 16px; margin-left: -11px; background: var(--brass); border-radius: 3px; transition: top .25s; }
+.pend .pivot { position: absolute; left: 50%; bottom: 20px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: var(--ink); }
+.pend .base { position: absolute; left: 0; right: 0; bottom: 0; height: 14px; background: var(--line); border-radius: 0 0 6px 6px; }
+
+.readout { min-width: 0; display: grid; gap: 4px; }
+.readout .label { font-size: .75rem; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.bpmline { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.note { font-size: 2rem; line-height: 1; color: var(--muted); }
+.bpm { font-family: var(--font-num); font-weight: 600; font-size: clamp(3.2rem, 11vw, 5.6rem); line-height: .95; font-variant-numeric: tabular-nums; letter-spacing: -.03em; }
+.marking { font-style: italic; font-weight: 600; color: var(--brass); font-size: 1.15rem; }
+.meta { color: var(--muted); font-family: var(--font-num); font-size: .8rem; font-variant-numeric: tabular-nums; }
+
+.tempo-row { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto auto; gap: 8px; align-items: center; }
+.btn { border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 6px 10px; font-weight: 600; font-family: var(--font-num); font-size: .85rem; min-width: 44px; min-height: 38px; }
+.btn:hover { border-color: var(--muted); }
+.btn:active { transform: translateY(1px); }
+input[type="range"] { width: 100%; accent-color: var(--teal); min-width: 0; }
+.tempo-row input[type="range"] { accent-color: var(--brass); }
+.tempo-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.num { width: 92px; border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 6px 8px; font-family: var(--font-num); font-variant-numeric: tabular-nums; min-height: 38px; }
+.tap { font-family: var(--font-ui); font-weight: 700; letter-spacing: .1em; padding: 6px 18px; }
+.tap.hit { background: var(--teal); color: var(--on-accent); border-color: var(--teal); }
+
+.beats-wrap { display: grid; gap: 8px; }
+.beats-head { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: .8rem; color: var(--muted); }
+.legend { display: flex; gap: 12px; flex-wrap: wrap; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+.beats { display: flex; flex-wrap: wrap; gap: 8px; }
+.beat { width: 50px; display: grid; gap: 4px; justify-items: center; background: none; border: 0; padding: 0; }
+.beat .cell { width: 100%; height: 72px; border-radius: 8px; border: 1px solid var(--line); background: var(--well); position: relative; overflow: hidden; transition: transform .06s; }
+.beat .fill { position: absolute; left: 0; right: 0; bottom: 0; background: var(--teal); opacity: .75; }
+.beat[data-l="3"] .fill { background: var(--brass); height: 100%; }
+.beat[data-l="2"] .fill { height: 64%; }
+.beat[data-l="1"] .fill { height: 30%; background: var(--ghost); }
+.beat[data-l="0"] .fill { height: 0; }
+.beat[data-l="0"] .cell { border-style: dashed; background: transparent; }
+.beat.on .cell { transform: scale(1.06); box-shadow: 0 0 0 3px var(--ink); }
+.beat.on .fill { opacity: 1; }
+.beat .n { font-family: var(--font-num); font-size: .75rem; color: var(--muted); }
+.beat.on .n { color: var(--ink); font-weight: 600; }
+.subs { display: flex; gap: 2px; width: 100%; height: 5px; }
+.subs b { flex: 1; background: var(--line); border-radius: 2px; }
+.subs b.on { background: var(--ink); }
+.poly-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: .8rem; color: var(--muted); }
+.poly-row .dots { display: flex; gap: 6px; }
+.poly-row .dots b { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--brass); }
+.poly-row .dots b.on { background: var(--brass); }
+
+.transport { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 16px; align-items: center; }
+.play { width: 84px; height: 84px; border-radius: 50%; border: 0; background: var(--ink); color: var(--panel); display: grid; place-items: center; }
+.play svg { width: 30px; height: 30px; fill: currentColor; }
+.play:hover { background: var(--teal); }
+.stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.stat { border-left: 2px solid var(--line); padding-left: 10px; min-width: 0; }
+.stat .k { font-size: .72rem; color: var(--muted); letter-spacing: .06em; }
+.stat .v { font-family: var(--font-num); font-size: 1.2rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.status { grid-column: 1 / -1; display: flex; gap: 8px; flex-wrap: wrap; min-height: 26px; }
+.pill { font-size: .75rem; font-weight: 600; padding: 2px 10px; border-radius: 99px; background: var(--well); color: var(--muted); }
+.pill.live { background: var(--teal-soft); color: var(--teal); }
+.pill.silent { background: var(--warn); color: var(--on-accent); }
+
+.bench { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+.tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-bottom: 1px solid var(--line); }
+.tabs button { border: 0; background: transparent; padding: 12px 6px; font-weight: 600; color: var(--muted); border-bottom: 3px solid transparent; }
+.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--brass); }
+.pane { padding: 18px; display: grid; gap: 22px; }
+.group { display: grid; gap: 12px; }
+.group h3 { margin: 0; font-size: .78rem; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); font-weight: 600; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.row { display: grid; grid-template-columns: 112px minmax(0, 1fr) 70px; gap: 10px; align-items: center; }
+.row > label { font-size: .88rem; }
+.row output { font-family: var(--font-num); font-size: .8rem; text-align: right; font-variant-numeric: tabular-nums; }
+.row.disabled { opacity: .45; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips button { border: 1px solid var(--line); background: transparent; border-radius: 99px; padding: 5px 12px; font-size: .85rem; min-height: 34px; }
+.chips button[aria-pressed="true"] { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+.chips button small { opacity: .7; margin-left: 3px; font-family: var(--font-num); }
+.sig { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.stepper { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.stepper button { border: 0; background: transparent; width: 38px; height: 38px; font-weight: 700; }
+.stepper span { min-width: 34px; text-align: center; font-family: var(--font-num); font-weight: 600; }
+.switch { display: inline-flex; align-items: center; gap: 8px; font-size: .82rem; color: var(--ink); text-transform: none; letter-spacing: 0; font-weight: 500; }
+.switch input { width: 18px; height: 18px; accent-color: var(--teal); }
+.hint { margin: 0; font-size: .8rem; color: var(--muted); max-width: 60ch; }
+.mini { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.mini label { display: grid; gap: 4px; font-size: .78rem; color: var(--muted); }
+.mini .num { width: 100%; }
+.preset-save { display: flex; gap: 8px; }
+.preset-save input { flex: 1; min-width: 0; border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 6px 10px; }
+.plist { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.plist li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+.plist .pn { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.plist .pd { font-size: .76rem; color: var(--muted); font-family: var(--font-num); }
+.plist .del { color: var(--warn); }
+.empty { font-size: .85rem; color: var(--muted); }
+
+@media (max-width: 520px) {
+  .instrument { padding: 16px; }
+  .pend { width: 86px; height: 130px; }
+  .pend .rod { height: 100px; }
+  .tempo-row { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .tempo-row .wide { display: none; }
+  .play { width: 68px; height: 68px; }
+  .row { grid-template-columns: 88px minmax(0, 1fr) 76px; }
+  .beat { width: 42px; }
+  .beat .cell { height: 60px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pend .weight { transition: none; }
+}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header class="top">
+    <h1>Tempo <span>Bench</span></h1>
+    <p><kbd>Space</kbd> เล่น/หยุด · <kbd>↑</kbd><kbd>↓</kbd> ±1 BPM (<kbd>Shift</kbd> ±10) · <kbd>T</kbd> แตะจังหวะ</p>
+  </header>
+
+  <div class="grid">
+    <section class="instrument" id="instrument" aria-label="เครื่องเคาะจังหวะ">
+      <div class="face">
+        <div class="pend" aria-hidden="true">
+          <div class="body"></div><div class="scale"></div>
+          <div class="rod" id="rod"><div class="weight" id="weight"></div></div>
+          <div class="pivot"></div><div class="base"></div>
+        </div>
+        <div class="readout">
+          <div class="label">Tempo</div>
+          <div class="bpmline">
+            <span class="note" id="noteGlyph">♩</span>
+            <span class="bpm" id="bpmText">120</span>
+          </div>
+          <div class="marking" id="marking">Allegro</div>
+          <div class="meta" id="meta">500.0 ms / จังหวะ · 4/4</div>
+        </div>
+      </div>
+
+      <div class="tempo-row">
+        <button class="btn wide" data-nudge="-5">−5</button>
+        <button class="btn" data-nudge="-1">−1</button>
+        <input type="range" id="bpmRange" min="20" max="400" step="1" aria-label="BPM">
+        <button class="btn" data-nudge="1">+1</button>
+        <button class="btn wide" data-nudge="5">+5</button>
+      </div>
+      <div class="tempo-tools">
+        <label for="bpmNum" class="meta">BPM ละเอียด</label>
+        <input type="number" class="num" id="bpmNum" min="20" max="400" step="0.1">
+        <button class="btn" data-nudge="-0.1">−0.1</button>
+        <button class="btn" data-nudge="0.1">+0.1</button>
+        <button class="btn tap" id="tapBtn">TAP</button>
+      </div>
+
+      <div class="beats-wrap">
+        <div class="beats-head">
+          <span>แตะช่องเพื่อเปลี่ยนน้ำหนักของแต่ละจังหวะ</span>
+          <span class="legend"><span><i style="background:var(--brass)"></i>เน้น</span><span><i style="background:var(--teal)"></i>ปกติ</span><span><i style="background:var(--ghost)"></i>เบา</span><span><i style="border:1px dashed var(--muted)"></i>เงียบ</span></span>
+        </div>
+        <div class="beats" id="beats"></div>
+        <div class="poly-row" id="polyRow" hidden><span id="polyLabel">Poly 3:4</span><span class="dots" id="polyDots"></span></div>
+      </div>
+
+      <div class="transport">
+        <button class="play" id="playBtn" aria-label="เริ่ม">
+          <svg viewBox="0 0 24 24" id="playIcon"><path d="M7 4.5v15l13-7.5z"/></svg>
+        </button>
+        <div class="stats">
+          <div class="stat"><div class="k">ห้องที่</div><div class="v" id="stBar">0</div></div>
+          <div class="stat"><div class="k">จังหวะ</div><div class="v" id="stBeat">–</div></div>
+          <div class="stat"><div class="k">เวลา</div><div class="v" id="stTime">0:00</div></div>
+        </div>
+        <div class="status" id="status"></div>
+      </div>
+    </section>
+
+    <section class="bench" aria-label="การตั้งค่า">
+      <div class="tabs" role="tablist">
+        <button role="tab" aria-selected="true" data-tab="rhythm">จังหวะ</button>
+        <button role="tab" aria-selected="false" data-tab="sound">เสียง</button>
+        <button role="tab" aria-selected="false" data-tab="train">ฝึกซ้อม</button>
+        <button role="tab" aria-selected="false" data-tab="presets">พรีเซ็ต</button>
+      </div>
+
+      <div class="pane" data-pane="rhythm">
+        <div class="group">
+          <h3>Time signature</h3>
+          <div class="sig">
+            <div class="stepper"><button id="beatsMinus" aria-label="ลดจำนวนจังหวะ">−</button><span id="beatsVal">4</span><button id="beatsPlus" aria-label="เพิ่มจำนวนจังหวะ">+</button></div>
+            <span style="font-size:1.4rem;color:var(--muted)">/</span>
+            <div class="chips" data-chip="noteValue">
+              <button data-v="2">2</button><button data-v="4">4</button><button data-v="8">8</button><button data-v="16">16</button>
+            </div>
+          </div>
+          <p class="hint">BPM นับตามตัวโน้ตล่าง เช่น 6/8 คือเคาะทุกเขบ็ตหนึ่งชั้น ถ้าต้องการเคาะ 6/8 แบบ 2 จังหวะต่อห้อง ให้ตั้ง 2/4 แล้วซอยโน้ต 3</p>
+        </div>
+
+        <div class="group">
+          <h3>ซอยโน้ต (Subdivision)</h3>
+          <div class="chips" data-chip="subdiv">
+            <button data-v="1">ไม่ซอย</button>
+            <button data-v="2">2 <small>♪♪</small></button>
+            <button data-v="3">3 <small>triplet</small></button>
+            <button data-v="4">4 <small>16th</small></button>
+            <button data-v="5">5</button>
+            <button data-v="6">6</button>
+            <button data-v="7">7</button>
+            <button data-v="8">8</button>
+          </div>
+          <div class="row" id="swingRow">
+            <label for="swing">Swing</label>
+            <input type="range" id="swing" data-key="swing" min="50" max="75" step="1">
+            <output data-out="swing"></output>
+          </div>
+          <p class="hint">Swing ใช้ได้กับซอย 2 และ 4 · 50% คือตรง, 67% คือ triplet swing</p>
+        </div>
+
+        <div class="group">
+          <h3>Polyrhythm <label class="switch"><input type="checkbox" id="polyOn" data-key="polyOn">เปิด</label></h3>
+          <div class="row" id="polyRowCtl">
+            <label for="poly">จำนวนโน้ตต่อห้อง</label>
+            <input type="range" id="poly" data-key="poly" min="2" max="13" step="1">
+            <output data-out="poly"></output>
+          </div>
+          <p class="hint">วางโน้ตเท่าๆ กันทับบนห้อง เช่น 3 ทับ 4 จังหวะ ได้ 3:4</p>
+        </div>
+      </div>
+
+      <div class="pane" data-pane="sound" hidden>
+        <div class="group">
+          <h3>เสียง</h3>
+          <div class="chips" data-chip="sound">
+            <button data-v="click">Click</button><button data-v="wood">Woodblock</button><button data-v="beep">Beep</button><button data-v="cow">Cowbell</button><button data-v="hat">Hi-hat</button>
+          </div>
+        </div>
+        <div class="group">
+          <h3>ระดับเสียง</h3>
+          <div class="row"><label for="master">รวม</label><input type="range" id="master" data-key="master" min="0" max="1" step="0.01"><output data-out="master"></output></div>
+          <div class="row"><label for="beatVol">จังหวะหลัก</label><input type="range" id="beatVol" data-key="beatVol" min="0" max="1" step="0.01"><output data-out="beatVol"></output></div>
+          <div class="row"><label for="subVol">ซอยโน้ต</label><input type="range" id="subVol" data-key="subVol" min="0" max="1" step="0.01"><output data-out="subVol"></output></div>
+          <div class="row"><label for="polyVol">Polyrhythm</label><input type="range" id="polyVol" data-key="polyVol" min="0" max="1" step="0.01"><output data-out="polyVol"></output></div>
+        </div>
+        <div class="group">
+          <h3>ระดับเสียงสูงต่ำ</h3>
+          <div class="row"><label for="accentPitch">จังหวะเน้น</label><input type="range" id="accentPitch" data-key="accentPitch" min="200" max="3000" step="10"><output data-out="accentPitch"></output></div>
+          <div class="row"><label for="beatPitch">จังหวะปกติ</label><input type="range" id="beatPitch" data-key="beatPitch" min="200" max="3000" step="10"><output data-out="beatPitch"></output></div>
+          <div class="row"><label for="subPitch">ซอยโน้ต</label><input type="range" id="subPitch" data-key="subPitch" min="200" max="3000" step="10"><output data-out="subPitch"></output></div>
+          <div class="row"><label for="polyPitch">Polyrhythm</label><input type="range" id="polyPitch" data-key="polyPitch" min="200" max="3000" step="10"><output data-out="polyPitch"></output></div>
+        </div>
+        <div class="group">
+          <h3>ภาพ</h3>
+          <label class="switch"><input type="checkbox" id="flash" data-key="flash">กระพริบแผงเมื่อถึงจังหวะ</label>
+          <label class="switch"><input type="checkbox" id="swingArm" data-key="swingArm">แกนลูกตุ้มแกว่งตามจังหวะ</label>
+        </div>
+      </div>
+
+      <div class="pane" data-pane="train" hidden>
+        <div class="group">
+          <h3>ไต่ความเร็ว <label class="switch"><input type="checkbox" id="trainerOn" data-key="trainerOn">เปิด</label></h3>
+          <div class="mini">
+            <label>เพิ่มครั้งละ (BPM)<input class="num" type="number" id="trainerStep" data-key="trainerStep" min="0.5" max="50" step="0.5"></label>
+            <label>ทุกกี่ห้อง<input class="num" type="number" id="trainerEvery" data-key="trainerEvery" min="1" max="64" step="1"></label>
+            <label>หยุดที่ BPM<input class="num" type="number" id="trainerTarget" data-key="trainerTarget" min="20" max="400" step="1"></label>
+          </div>
+          <p class="hint">เริ่มจาก BPM ปัจจุบัน ถ้าเป้าต่ำกว่า จะลดความเร็วลงแทน กดหยุดแล้ว BPM จะกลับไปค่าเริ่มต้น</p>
+        </div>
+        <div class="group">
+          <h3>Gap click <label class="switch"><input type="checkbox" id="gapOn" data-key="gapOn">เปิด</label></h3>
+          <div class="mini">
+            <label>เล่นกี่ห้อง<input class="num" type="number" id="gapPlay" data-key="gapPlay" min="1" max="32" step="1"></label>
+            <label>เงียบกี่ห้อง<input class="num" type="number" id="gapMute" data-key="gapMute" min="1" max="32" step="1"></label>
+          </div>
+          <p class="hint">เงียบเป็นช่วงๆ เพื่อฝึกนับในใจ แล้วดูว่ากลับมาตรงจังหวะหรือไม่</p>
+        </div>
+        <div class="group">
+          <h3>สุ่มเงียบ</h3>
+          <div class="row"><label for="randomMute">โอกาสต่อจังหวะ</label><input type="range" id="randomMute" data-key="randomMute" min="0" max="90" step="5"><output data-out="randomMute"></output></div>
+        </div>
+        <div class="group">
+          <h3>ตั้งเวลา</h3>
+          <div class="row"><label for="stopAfter">หยุดเองหลัง</label><input type="range" id="stopAfter" data-key="stopAfter" min="0" max="60" step="1"><output data-out="stopAfter"></output></div>
+          <div class="row"><label for="countIn">นับนำ</label><input type="range" id="countIn" data-key="countIn" min="0" max="2" step="1"><output data-out="countIn"></output></div>
+          <p class="hint">ห้องนับนำเล่นครบทุกจังหวะ ไม่นับรวมกับ gap click หรือการไต่ความเร็ว</p>
+        </div>
+      </div>
+
+      <div class="pane" data-pane="presets" hidden>
+        <div class="group">
+          <h3>บันทึกค่าปัจจุบัน</h3>
+          <form class="preset-save" id="presetForm">
+            <input id="presetName" placeholder="ชื่อ เช่น เพลงเปิดงาน 96" maxlength="40" aria-label="ชื่อพรีเซ็ต">
+            <button class="btn" type="submit" style="font-family:var(--font-ui)">บันทึก</button>
+          </form>
+        </div>
+        <div class="group">
+          <h3>ของฉัน</h3>
+          <ul class="plist" id="myPresets"></ul>
+        </div>
+        <div class="group">
+          <h3>ตัวอย่าง</h3>
+          <ul class="plist" id="builtinPresets"></ul>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+(() => {
+  const DEFAULTS = {
+    bpm: 120, beats: 4, noteValue: 4, accents: [3, 2, 2, 2], subdiv: 1, swing: 50,
+    sound: 'click', master: 0.8, beatVol: 1, subVol: 0.45, polyVol: 0.6,
+    accentPitch: 1760, beatPitch: 1320, subPitch: 880, polyPitch: 620,
+    polyOn: false, poly: 3, flash: true, swingArm: true,
+    trainerOn: false, trainerStep: 2, trainerEvery: 4, trainerTarget: 140,
+    gapOn: false, gapPlay: 2, gapMute: 2, randomMute: 0, stopAfter: 0, countIn: 0
+  };
+  const BUILTIN = [
+    { name: 'Swing shuffle 132', o: { bpm: 132, beats: 4, noteValue: 4, accents: [3,2,3,2], subdiv: 2, swing: 66, sound: 'hat' } },
+    { name: '6/8 บัลลาด', o: { bpm: 168, beats: 6, noteValue: 8, accents: [3,1,1,2,1,1], subdiv: 1, sound: 'wood' } },
+    { name: '7/8 (2+2+3)', o: { bpm: 210, beats: 7, noteValue: 8, accents: [3,1,2,1,2,1,1], subdiv: 1, sound: 'click' } },
+    { name: 'Polyrhythm 3:2', o: { bpm: 80, beats: 2, noteValue: 4, accents: [3,2], subdiv: 1, polyOn: true, poly: 3, sound: 'wood' } },
+    { name: 'ไต่ความเร็ว 80 → 120', o: { bpm: 80, beats: 4, noteValue: 4, accents: [3,2,2,2], subdiv: 2, trainerOn: true, trainerStep: 2, trainerEvery: 4, trainerTarget: 120 } },
+    { name: 'Gap click 2+2', o: { bpm: 100, beats: 4, noteValue: 4, accents: [3,2,2,2], gapOn: true, gapPlay: 2, gapMute: 2, countIn: 1 } },
+    { name: '16th โน้ตเร็ว 90', o: { bpm: 90, beats: 4, noteValue: 4, accents: [3,2,2,2], subdiv: 4, swing: 50, subVol: 0.5, sound: 'beep' } }
+  ];
+  const TRAIN_KEYS = ['trainerOn','trainerStep','trainerEvery','trainerTarget','gapOn','gapPlay','gapMute','randomMute','stopAfter','countIn','polyOn','poly'];
+
+  const store = {
+    get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+  };
+
+  let state = Object.assign({}, DEFAULTS, store.get('tb-state') || {});
+  let myPresets = store.get('tb-presets') || [];
+  const $ = (id) => document.getElementById(id);
+  const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+  const round1 = (v) => Math.round(v * 10) / 10;
+  const fmtBpm = (v) => Number.isInteger(v) ? String(v) : v.toFixed(1);
+
+  function marking(b) {
+    if (b < 40) return 'Grave';
+    if (b < 60) return 'Largo';
+    if (b < 66) return 'Larghetto';
+    if (b < 76) return 'Adagio';
+    if (b < 108) return 'Andante';
+    if (b < 120) return 'Moderato';
+    if (b < 156) return 'Allegro';
+    if (b < 176) return 'Vivace';
+    if (b < 200) return 'Presto';
+    return 'Prestissimo';
+  }
+  const NOTE_GLYPH = { 2: '𝅗𝅥', 4: '♩', 8: '♪', 16: '𝅘𝅥𝅯' };
+
+  let saveT;
+  function persist() { clearTimeout(saveT); saveT = setTimeout(() => store.set('tb-state', state), 200); }
+
+  /* ---------- Tempo ---------- */
+  function setBpm(v) {
+    state.bpm = clamp(round1(v), 20, 400);
+    renderTempo(); persist();
+  }
+  function renderTempo() {
+    $('bpmText').textContent = fmtBpm(state.bpm);
+    $('marking').textContent = marking(state.bpm);
+    $('noteGlyph').textContent = NOTE_GLYPH[state.noteValue] || '♩';
+    $('meta').textContent = `${(60000 / state.bpm).toFixed(1)} ms / จังหวะ · ${state.beats}/${state.noteValue}`;
+    $('bpmRange').value = Math.round(state.bpm);
+    if (document.activeElement !== $('bpmNum')) $('bpmNum').value = state.bpm;
+    // real metronomes slide the weight up for slower tempos
+    const t = clamp((state.bpm - 40) / (208 - 40), 0, 1);
+    $('weight').style.top = (8 + t * 62) + '%';
+  }
+  document.querySelectorAll('[data-nudge]').forEach(b => b.addEventListener('click', () => setBpm(state.bpm + parseFloat(b.dataset.nudge))));
+  $('bpmRange').addEventListener('input', e => setBpm(+e.target.value));
+  $('bpmNum').addEventListener('change', e => { const v = parseFloat(e.target.value); if (!isNaN(v)) setBpm(v); else renderTempo(); });
+
+  let taps = [];
+  function tap() {
+    const n = performance.now();
+    if (taps.length && n - taps[taps.length - 1] > 2000) taps = [];
+    taps.push(n);
+    if (taps.length > 8) taps.shift();
+    if (taps.length >= 2) setBpm(60000 / ((taps[taps.length - 1] - taps[0]) / (taps.length - 1)));
+    const b = $('tapBtn'); b.classList.add('hit'); setTimeout(() => b.classList.remove('hit'), 90);
+  }
+  $('tapBtn').addEventListener('click', tap);
+
+  /* ---------- Beats ---------- */
+  function fitAccents() {
+    const a = state.accents.slice(0, state.beats);
+    while (a.length < state.beats) a.push(a.length === 0 ? 3 : 2);
+    state.accents = a;
+  }
+  const LV_NAME = { 3: 'เน้น', 2: 'ปกติ', 1: 'เบา', 0: 'เงียบ' };
+  function renderBeats() {
+    fitAccents();
+    const wrap = $('beats'); wrap.innerHTML = '';
+    for (let i = 0; i < state.beats; i++) {
+      const b = document.createElement('button');
+      b.className = 'beat'; b.dataset.i = i; b.dataset.l = state.accents[i];
+      b.setAttribute('aria-label', `จังหวะ ${i + 1}: ${LV_NAME[state.accents[i]]}`);
+      const subs = state.subdiv > 1 ? '<span class="subs">' + '<b></b>'.repeat(state.subdiv) + '</span>' : '<span class="subs"></span>';
+      b.innerHTML = `<span class="cell"><span class="fill"></span></span>${subs}<span class="n">${i + 1}</span>`;
+      b.addEventListener('click', () => {
+        const order = [3, 2, 1, 0];
+        state.accents[i] = order[(order.indexOf(state.accents[i]) + 1) % 4];
+        b.dataset.l = state.accents[i];
+        b.setAttribute('aria-label', `จังหวะ ${i + 1}: ${LV_NAME[state.accents[i]]}`);
+        persist();
+      });
+      wrap.appendChild(b);
+    }
+    $('beatsVal').textContent = state.beats;
+    renderPoly();
+    renderTempo();
+  }
+  function renderPoly() {
+    $('polyRow').hidden = !state.polyOn;
+    $('polyLabel').textContent = `Poly ${state.poly}:${state.beats}`;
+    $('polyDots').innerHTML = '<b></b>'.repeat(state.poly);
+  }
+  $('beatsMinus').addEventListener('click', () => { state.beats = clamp(state.beats - 1, 1, 16); renderBeats(); persist(); });
+  $('beatsPlus').addEventListener('click', () => { state.beats = clamp(state.beats + 1, 1, 16); renderBeats(); persist(); });
+
+  /* ---------- Generic controls ---------- */
+  const OUT = {
+    swing: v => v + '%', poly: v => `${v}:${state.beats}`,
+    master: v => Math.round(v * 100) + '%', beatVol: v => Math.round(v * 100) + '%', subVol: v => Math.round(v * 100) + '%', polyVol: v => Math.round(v * 100) + '%',
+    accentPitch: v => v + ' Hz', beatPitch: v => v + ' Hz', subPitch: v => v + ' Hz', polyPitch: v => v + ' Hz',
+    randomMute: v => v + '%', stopAfter: v => v ? v + ' นาที' : 'ปิด', countIn: v => v ? v + ' ห้อง' : 'ไม่มี'
+  };
+  function syncControls() {
+    document.querySelectorAll('[data-key]').forEach(el => {
+      const v = state[el.dataset.key];
+      if (el.type === 'checkbox') el.checked = !!v; else if (document.activeElement !== el) el.value = v;
+    });
+    document.querySelectorAll('[data-out]').forEach(o => { const k = o.dataset.out; o.textContent = OUT[k] ? OUT[k](state[k]) : state[k]; });
+    document.querySelectorAll('[data-chip]').forEach(g => {
+      g.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v == state[g.dataset.chip])));
+    });
+    $('swingRow').classList.toggle('disabled', !(state.subdiv === 2 || state.subdiv === 4));
+    $('swing').disabled = !(state.subdiv === 2 || state.subdiv === 4);
+    $('polyRowCtl').classList.toggle('disabled', !state.polyOn);
+    if (master && ctx) master.gain.setTargetAtTime(state.master, ctx.currentTime, 0.02);
+  }
+  document.querySelectorAll('[data-key]').forEach(el => {
+    const k = el.dataset.key;
+    el.addEventListener(el.type === 'checkbox' ? 'change' : 'input', () => {
+      if (el.type === 'checkbox') state[k] = el.checked;
+      else { const v = parseFloat(el.value); if (isNaN(v)) return; state[k] = clamp(v, +el.min || -Infinity, +el.max || Infinity); }
+      if (k === 'poly' || k === 'polyOn') renderPoly();
+      if (k === 'swingArm' && !state.swingArm) $('rod').style.transform = '';
+      syncControls(); persist();
+    });
+  });
+  document.querySelectorAll('[data-chip]').forEach(g => {
+    g.addEventListener('click', e => {
+      const b = e.target.closest('button'); if (!b) return;
+      const k = g.dataset.chip; const v = b.dataset.v;
+      state[k] = isNaN(+v) ? v : +v;
+      if (k === 'subdiv') renderBeats();
+      if (k === 'noteValue') renderTempo();
+      if (k === 'sound') preview();
+      syncControls(); persist();
+    });
+  });
+
+  /* ---------- Tabs ---------- */
+  document.querySelectorAll('[data-tab]').forEach(t => t.addEventListener('click', () => {
+    document.querySelectorAll('[data-tab]').forEach(x => x.setAttribute('aria-selected', String(x === t)));
+    document.querySelectorAll('[data-pane]').forEach(p => p.hidden = p.dataset.pane !== t.dataset.tab);
+    try { localStorage.setItem('tb-tab', t.dataset.tab); } catch (e) {}
+  }));
+  try { const t = localStorage.getItem('tb-tab'); if (t) document.querySelector(`[data-tab="${t}"]`)?.click(); } catch (e) {}
+
+  /* ---------- Audio ---------- */
+  let ctx = null, master = null, noise = null, worker = null;
+  const SOUND_GAIN = { click: 0.7, wood: 1.0, beep: 0.5, cow: 0.45, hat: 0.9 };
+
+  function ensureAudio() {
+    if (ctx) return;
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    master = ctx.createGain(); master.gain.value = state.master; master.connect(ctx.destination);
+    noise = ctx.createBuffer(1, ctx.sampleRate * 0.3, ctx.sampleRate);
+    const d = noise.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  }
+  function env(g, t, peak, decay) {
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(peak, t + 0.0015);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + decay);
+  }
+  function voice(t, freq, gain, accent) {
+    if (gain <= 0.001) return;
+    const s = state.sound, peak = gain * SOUND_GAIN[s];
+    const g = ctx.createGain(); g.connect(master);
+    if (s === 'click') {
+      const o = ctx.createOscillator(), f = ctx.createBiquadFilter();
+      o.type = 'square'; o.frequency.value = freq; f.type = 'bandpass'; f.frequency.value = freq; f.Q.value = 3;
+      o.connect(f); f.connect(g); env(g, t, peak, 0.035); o.start(t); o.stop(t + 0.05);
+    } else if (s === 'beep') {
+      const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = freq;
+      o.connect(g); env(g, t, peak, 0.09); o.start(t); o.stop(t + 0.11);
+    } else if (s === 'wood') {
+      const o = ctx.createOscillator(); o.type = 'triangle';
+      o.frequency.setValueAtTime(freq * 0.62, t); o.frequency.exponentialRampToValueAtTime(freq * 0.5, t + 0.05);
+      o.connect(g); env(g, t, peak, 0.07); o.start(t); o.stop(t + 0.09);
+      const n = ctx.createBufferSource(), f = ctx.createBiquadFilter(), ng = ctx.createGain();
+      n.buffer = noise; f.type = 'bandpass'; f.frequency.value = freq * 1.8; f.Q.value = 4;
+      n.connect(f); f.connect(ng); ng.connect(master); env(ng, t, peak * 0.6, 0.012); n.start(t); n.stop(t + 0.03);
+    } else if (s === 'cow') {
+      const base = freq * 0.42, f = ctx.createBiquadFilter();
+      f.type = 'bandpass'; f.frequency.value = base * 1.3; f.Q.value = 1.5; f.connect(g);
+      [base, base * 1.48].forEach(fr => { const o = ctx.createOscillator(); o.type = 'square'; o.frequency.value = fr; o.connect(f); o.start(t); o.stop(t + 0.3); });
+      env(g, t, peak, accent ? 0.28 : 0.18);
+    } else if (s === 'hat') {
+      const n = ctx.createBufferSource(), f = ctx.createBiquadFilter();
+      n.buffer = noise; f.type = 'highpass'; f.frequency.value = Math.min(14000, freq * 4);
+      n.connect(f); f.connect(g); env(g, t, peak, accent ? 0.11 : 0.045); n.start(t); n.stop(t + 0.15);
+    }
+  }
+  function preview() {
+    ensureAudio(); ctx.resume();
+    if (!playing) voice(ctx.currentTime + 0.02, state.accentPitch, state.beatVol, true);
+  }
+
+  /* ---------- Scheduler ---------- */
+  let playing = false, nextBeat = 0, beatIdx = 0, barNum = 0, countInLeft = 0, startAt = 0, beatCount = 0, baseBpm = 120, barsSinceStep = 0;
+  const vq = [];
+  let lastBeatEv = null, wakeLock = null;
+
+  function subOffsets() {
+    const n = state.subdiv, s = state.swing / 100;
+    if (n === 2) return [0, s];
+    if (n === 4) return [0, s / 2, 0.5, 0.5 + s / 2];
+    return Array.from({ length: n }, (_, k) => k / n);
+  }
+  function onNewBar() {
+    if (countInLeft > 0) return;
+    barNum++;
+    if (state.trainerOn && barNum > 1) {
+      barsSinceStep++;
+      if (barsSinceStep >= state.trainerEvery) {
+        barsSinceStep = 0;
+        const tgt = state.trainerTarget, d = state.trainerStep;
+        if (state.bpm < tgt) state.bpm = Math.min(tgt, round1(state.bpm + d));
+        else if (state.bpm > tgt) state.bpm = Math.max(tgt, round1(state.bpm - d));
+        requestAnimationFrame(renderTempo);
+      }
+    }
+  }
+  function scheduleBeat(t) {
+    if (beatIdx >= state.beats) beatIdx = 0;
+    if (beatIdx === 0) { if (countInLeft > 0 && beatCount > 0) countInLeft--; onNewBar(); }
+    const dur = 60 / state.bpm;
+    const inCount = countInLeft > 0;
+    const gapMuted = !inCount && state.gapOn && ((barNum - 1) % (state.gapPlay + state.gapMute)) >= state.gapPlay;
+    const rndMuted = !inCount && !gapMuted && state.randomMute > 0 && Math.random() * 100 < state.randomMute;
+    const muted = gapMuted || rndMuted;
+    const lvl = inCount ? (beatIdx === 0 ? 3 : 2) : (state.accents[beatIdx] ?? 2);
+    const lvlGain = [0, 0.3, 0.7, 1][lvl];
+    if (!muted) voice(t, lvl === 3 ? state.accentPitch : state.beatPitch, lvlGain * state.beatVol, lvl === 3);
+    vq.push({ t, kind: 'beat', i: beatIdx, lvl, dur, muted, gap: gapMuted, inCount, bar: barNum, n: beatCount });
+    if (state.subdiv > 1 && !inCount) {
+      subOffsets().forEach((o, k) => {
+        if (k === 0) return;
+        const st = t + o * dur;
+        if (!muted) voice(st, state.subPitch, state.subVol * 0.8, false);
+        vq.push({ t: st, kind: 'sub', i: beatIdx, k });
+      });
+    }
+    if (state.polyOn && !inCount) {
+      for (let p = 0; p < state.poly; p++) {
+        const pos = p * state.beats / state.poly;
+        if (Math.floor(pos + 1e-9) === beatIdx) {
+          const pt = t + (pos - beatIdx) * dur;
+          if (!muted) voice(pt, state.polyPitch, state.polyVol, p === 0);
+          vq.push({ t: pt, kind: 'poly', p });
+        }
+      }
+    }
+    beatCount++;
+    beatIdx++;
+    return dur;
+  }
+  function tick() {
+    if (!playing) return;
+    if (state.stopAfter > 0 && ctx.currentTime - startAt >= state.stopAfter * 60) { stop(); return; }
+    while (nextBeat < ctx.currentTime + 0.12) nextBeat += scheduleBeat(nextBeat);
+  }
+
+  async function start() {
+    ensureAudio();
+    await ctx.resume();
+    master.gain.value = state.master;
+    playing = true; beatIdx = 0; barNum = 0; beatCount = 0; barsSinceStep = 0; vq.length = 0; lastBeatEv = null;
+    countInLeft = state.countIn; baseBpm = state.bpm;
+    nextBeat = ctx.currentTime + 0.08; startAt = nextBeat;
+    if (!worker) {
+      const src = 'let id=null;onmessage=e=>{if(e.data==="start"){clearInterval(id);id=setInterval(()=>postMessage(0),25)}else{clearInterval(id)}}';
+      try { worker = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' }))); worker.onmessage = tick; }
+      catch (e) { worker = { postMessage(m) { clearInterval(this.id); if (m === 'start') this.id = setInterval(tick, 25); } }; }
+    }
+    worker.postMessage('start'); tick();
+    requestAnimationFrame(draw);
+    setPlayIcon(true);
+    try { wakeLock = await navigator.wakeLock?.request('screen'); } catch (e) { wakeLock = null; }
+  }
+  function stop() {
+    playing = false; worker && worker.postMessage('stop'); vq.length = 0;
+    if (state.trainerOn) { state.bpm = baseBpm; renderTempo(); persist(); }
+    document.querySelectorAll('.beat.on, .subs b.on, .poly-row b.on').forEach(e => e.classList.remove('on'));
+    $('rod').style.transform = ''; $('stBeat').textContent = '–'; $('status').innerHTML = '';
+    setPlayIcon(false);
+    try { wakeLock?.release(); } catch (e) {} wakeLock = null;
+  }
+  function setPlayIcon(on) {
+    $('playIcon').innerHTML = on ? '<path d="M6 5h4.5v14H6zM13.5 5H18v14h-4.5z"/>' : '<path d="M7 4.5v15l13-7.5z"/>';
+    $('playBtn').setAttribute('aria-label', on ? 'หยุด' : 'เริ่ม');
+  }
+  $('playBtn').addEventListener('click', () => playing ? stop() : start());
+
+  /* ---------- Visuals ---------- */
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let flashT;
+  function applyEvent(e) {
+    if (e.kind === 'beat') {
+      lastBeatEv = e;
+      const beats = $('beats').children;
+      for (const b of beats) { b.classList.remove('on'); b.querySelectorAll('.subs b.on').forEach(x => x.classList.remove('on')); }
+      const b = beats[e.i];
+      if (b) { b.classList.add('on'); b.querySelector('.subs b')?.classList.add('on'); }
+      $('stBeat').textContent = `${e.i + 1}/${state.beats}`;
+      $('stBar').textContent = e.inCount ? 'นับ' : e.bar;
+      if (state.flash && !e.muted && e.lvl > 0) {
+        const inst = $('instrument');
+        inst.classList.remove('flash-a', 'flash-b');
+        void inst.offsetWidth;
+        inst.classList.add(e.lvl === 3 ? 'flash-a' : 'flash-b');
+        clearTimeout(flashT); flashT = setTimeout(() => inst.classList.remove('flash-a', 'flash-b'), 60);
+      }
+      renderStatus(e);
+    } else if (e.kind === 'sub') {
+      const b = $('beats').children[e.i]; if (!b) return;
+      const ticks = b.querySelectorAll('.subs b');
+      ticks.forEach((x, j) => x.classList.toggle('on', j === e.k));
+    } else if (e.kind === 'poly') {
+      const dots = $('polyDots').children;
+      for (let j = 0; j < dots.length; j++) dots[j].classList.toggle('on', j === e.p);
+    }
+  }
+  function renderStatus(e) {
+    const pills = [];
+    if (e.inCount) pills.push('<span class="pill live">นับนำ</span>');
+    if (e.gap) pills.push('<span class="pill silent">ช่วงเงียบ นับในใจ</span>');
+    else if (state.gapOn && !e.inCount) pills.push('<span class="pill live">Gap click: ช่วงเล่น</span>');
+    if (state.trainerOn) pills.push(`<span class="pill live">ไต่ความเร็ว ${fmtBpm(state.bpm)} → ${state.trainerTarget}</span>`);
+    if (state.randomMute > 0) pills.push(`<span class="pill">สุ่มเงียบ ${state.randomMute}%</span>`);
+    if (state.stopAfter > 0) pills.push(`<span class="pill">หยุดเองที่ ${state.stopAfter} นาที</span>`);
+    const html = pills.join('');
+    if ($('status').innerHTML !== html) $('status').innerHTML = html;
+  }
+  function draw() {
+    if (!playing) return;
+    const now = ctx.currentTime - (ctx.outputLatency || 0);
+    while (vq.length && vq[0].t <= now) applyEvent(vq.shift());
+    const el = Math.max(0, ctx.currentTime - startAt);
+    $('stTime').textContent = `${Math.floor(el / 60)}:${String(Math.floor(el % 60)).padStart(2, '0')}`;
+    if (lastBeatEv && state.swingArm && !reduceMotion) {
+      const p = clamp((now - lastBeatEv.t) / lastBeatEv.dur, 0, 1);
+      const dir = lastBeatEv.n % 2 ? -1 : 1;
+      $('rod').style.transform = `rotate(${dir * 24 * Math.cos(Math.PI * p)}deg)`;
+    }
+    requestAnimationFrame(draw);
+  }
+
+  /* ---------- Presets ---------- */
+  function presetSummary(o) {
+    const s = Object.assign({}, DEFAULTS, o);
+    const parts = [`${fmtBpm(s.bpm)} BPM`, `${s.beats}/${s.noteValue}`];
+    if (s.subdiv > 1) parts.push(`ซอย ${s.subdiv}` + (s.swing > 50 && (s.subdiv === 2 || s.subdiv === 4) ? ` swing ${s.swing}%` : ''));
+    if (s.polyOn) parts.push(`poly ${s.poly}:${s.beats}`);
+    if (s.trainerOn) parts.push(`→ ${s.trainerTarget}`);
+    if (s.gapOn) parts.push(`gap ${s.gapPlay}+${s.gapMute}`);
+    return parts.join(' · ');
+  }
+  function loadPreset(o) {
+    const keep = { master: state.master };
+    state = Object.assign({}, DEFAULTS, o, keep);
+    state.accents = (o.accents || DEFAULTS.accents).slice();
+    renderAll(); persist();
+  }
+  function renderPresets() {
+    const mine = $('myPresets'); mine.innerHTML = '';
+    if (!myPresets.length) mine.innerHTML = '<li class="empty" style="border-style:dashed">ยังไม่มี ตั้งค่าที่ต้องการแล้วกดบันทึกด้านบน</li>';
+    myPresets.forEach((p, idx) => {
+      const li = document.createElement('li');
+      li.innerHTML = `<div style="min-width:0"><div class="pn"></div><div class="pd">${presetSummary(p.o)}</div></div><button class="btn" data-a="load">โหลด</button><button class="btn del" data-a="del" aria-label="ลบ">ลบ</button>`;
+      li.querySelector('.pn').textContent = p.name;
+      li.querySelector('[data-a="load"]').addEventListener('click', () => loadPreset(p.o));
+      li.querySelector('[data-a="del"]').addEventListener('click', () => { myPresets.splice(idx, 1); store.set('tb-presets', myPresets); renderPresets(); });
+      mine.appendChild(li);
+    });
+    const bi = $('builtinPresets'); bi.innerHTML = '';
+    BUILTIN.forEach(p => {
+      const li = document.createElement('li');
+      li.style.gridTemplateColumns = 'minmax(0,1fr) auto';
+      li.innerHTML = `<div style="min-width:0"><div class="pn"></div><div class="pd">${presetSummary(p.o)}</div></div><button class="btn">โหลด</button>`;
+      li.querySelector('.pn').textContent = p.name;
+      li.querySelector('button').addEventListener('click', () => loadPreset(p.o));
+      bi.appendChild(li);
+    });
+    document.querySelectorAll('.plist .btn').forEach(b => b.style.fontFamily = 'var(--font-ui)');
+  }
+  $('presetForm').addEventListener('submit', e => {
+    e.preventDefault();
+    const name = $('presetName').value.trim() || `${fmtBpm(state.bpm)} BPM ${state.beats}/${state.noteValue}`;
+    const o = JSON.parse(JSON.stringify(state)); delete o.master;
+    const existing = myPresets.findIndex(p => p.name === name);
+    if (existing >= 0) myPresets[existing].o = o; else myPresets.unshift({ name, o });
+    store.set('tb-presets', myPresets); $('presetName').value = ''; renderPresets();
+  });
+
+  /* ---------- Keyboard ---------- */
+  document.addEventListener('keydown', e => {
+    const t = e.target;
+    const typing = t.tagName === 'INPUT' && t.type !== 'checkbox' && t.type !== 'range' || t.tagName === 'SELECT';
+    if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.code === 'Space') { e.preventDefault(); playing ? stop() : start(); }
+    else if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && t.type !== 'range') { e.preventDefault(); setBpm(state.bpm + (e.key === 'ArrowUp' ? 1 : -1) * (e.shiftKey ? 10 : 1)); }
+    else if (e.key === 't' || e.key === 'T') tap();
+  });
+  document.addEventListener('visibilitychange', async () => {
+    if (document.visibilityState === 'visible' && playing && !wakeLock) { try { wakeLock = await navigator.wakeLock?.request('screen'); } catch (e) {} }
+  });
+
+  function renderAll() { renderBeats(); syncControls(); renderPresets(); }
+  renderAll();
+})();
+</script>
+</body>
+</html>
