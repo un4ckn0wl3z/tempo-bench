@@ -2646,8 +2646,9 @@ canvas.wave.zoom { height: 72px; }
     let out = trCache.get(t);
     if (out === undefined) {
       out = EN_EXACT[t];
-      if (out === undefined) for (const [re, rep] of EN_PATTERNS) if (re.test(t)) { out = t.replace(re, rep); break; }
+      // composite messages are joined with ' · ': translate each part before trying whole-string patterns
       if (out === undefined && t.includes(' · ')) out = t.split(' · ').map(p => translate(p)).join(' · ');
+      if (out === undefined) for (const [re, rep] of EN_PATTERNS) if (re.test(t)) { out = t.replace(re, rep); break; }
       if (out === undefined) out = t;
       trCache.set(t, out);
     }
@@ -2655,7 +2656,7 @@ canvas.wave.zoom { height: 72px; }
   }
   let uiLang = 'th';
   const ORIG = new WeakMap(), LAST = new WeakMap(), I18N_ATTRS = ['aria-label', 'placeholder', 'title', 'alt'];
-  const skip = (el) => !el || el.closest('script,style,[data-noi18n]');
+  const skip = (el) => !el || el.closest('script,style,noscript,[data-noi18n]');
   function syncText(node) {
     if (skip(node.parentElement)) return;
     const cur = node.data;
