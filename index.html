@@ -253,6 +253,7 @@ canvas.wave.zoom { height: 72px; }
 .vol { display: inline-flex; align-items: center; gap: 8px; font-size: .8rem; color: var(--muted); }
 .vol input { width: 110px; }
 .tracks { display: grid; gap: 6px; }
+#lcBeats .steps button:first-child[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--panel); }
 .tracks .chips button[aria-pressed="false"] { text-decoration: line-through; opacity: .55; }
 .map-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
 .barmap { display: flex; flex-wrap: wrap; align-content: flex-start; gap: 4px; max-height: 62vh; overflow: auto; padding: 2px; user-select: none; -webkit-user-select: none; }
@@ -665,6 +666,19 @@ canvas.wave.zoom { height: 72px; }
           </div>
           <div class="chips" id="lcPattern"></div>
           <div class="row" id="lcSwingRow"><label for="lcSwing">Swing</label><input type="range" id="lcSwing" min="50" max="75" step="1"><output id="lcSwingOut"></output></div>
+        </div>
+        <div class="group" id="lcBeatsGroup">
+          <h3>ซอยรายจังหวะ</h3>
+          <p class="hint" id="lcBeatsHint"></p>
+          <div class="gridrows" id="lcBeats"></div>
+          <button class="btn txt" id="lcBeatsClear" type="button" hidden>ใช้การซอยทั้งห้อง (ล้างค่ารายจังหวะ)</button>
+        </div>
+        <div class="group" id="lcFollowGroup" hidden>
+          <h3>คลิกตามโน้ตในไฟล์</h3>
+          <div class="chips" id="lcFollow"><button data-v="">ปิด</button><button data-v="replace">แทนคลิกจังหวะ</button><button data-v="add">เพิ่มจากคลิกจังหวะ</button></div>
+          <span class="meta">ใช้โน้ตจากแทร็ก</span>
+          <div class="chips" id="lcFollowTracks"></div>
+          <p class="hint">คลิกตรงจุดเริ่มของโน้ตแต่ละตัวในแทร็กที่เลือก ช่วยซ้อมริฟฟ์ที่จังหวะซับซ้อน โน้ตที่ตกตรงจังหวะใช้เสียงคลิกหลัก โน้ตระหว่างจังหวะใช้เสียงโน้ตซอย</p>
         </div>
         <div class="group" id="lcTempoGroup" hidden>
           <h3>ความเร็วและห้องจังหวะของช่วงนี้</h3>
@@ -1546,12 +1560,12 @@ canvas.wave.zoom { height: 72px; }
   /* ---------- Song lab: practise along with an audio, Guitar Pro or MIDI file ---------- */
   // A song is a list of bars in playback order: { n, orig, tick, len, num, den, section, t, end, bpm }.
   // `t`/`end` are seconds on the timeline (for audio, seconds into the file; bar 1 starts at the offset).
-  const LAB_DEFAULT = { mute: false, accent: true, group: false, subdiv: 1, pattern: -1, swing: 50 };
+  const LAB_DEFAULT = { mute: false, accent: true, group: false, subdiv: 1, pattern: -1, swing: 50, follow: '' };
   const PAT_SHORT = { 1: '♪.♬', 2: 'gallop', 3: 'rev', 4: 'e-a', 5: 'shuf' };
   const DEMO_CFG = { 9: { subdiv: 2 }, 10: { subdiv: 2 }, 11: { subdiv: 2 }, 12: { mute: true }, 15: { subdiv: 4 }, 16: { subdiv: 4 },
     17: { pattern: 2, subdiv: 4 }, 18: { pattern: 2, subdiv: 4 }, 23: { group: true }, 24: { group: true } };
   const lab = { src: null, song: null, ev: [], cells: [], base: { bpm: 120, num: 4, den: 4, offset: 0 }, cfg: {},
-    sel: { from: 1, to: 1 }, anchor: 0, exStart: 'song', repeats: true, muted: new Set(), key: '', nowBar: 0, colors: null, zoomStart: 0 };
+    sel: { from: 1, to: 1 }, anchor: 0, exStart: 'song', repeats: true, muted: new Set(), followChs: new Set(), key: '', nowBar: 0, colors: null, zoomStart: 0 };
   const lp = { playing: false, T0: 0, pos0: 0, segEnd: 0, ei: 0, src: null, done: false, stopAt: 0, lastTau: 0, songGain: null, clickGain: null };
   const cfgOf = (n) => Object.assign({}, LAB_DEFAULT, lab.cfg[n]);
   const fmtTime = (s) => { s = Math.max(0, s); return `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, '0')}`; };
@@ -1871,31 +1885,49 @@ canvas.wave.zoom { height: 72px; }
     if (src.notesByBar) raw.bars.forEach(b => (src.notesByBar[b.orig - 1] || []).forEach(n => notes.push({ ...n, tick: b.tick + n.rel })));
     else if (src.notes) notes = src.notes;
     lab.song = { ppq, tm, secAt, bpmAt, bars, off, end: src.kind === 'audio' ? src.duration : bars[bars.length - 1].end,
-      notes: notes.map(n => ({ t: off + secAt(n.tick), end: off + secAt(n.tick + n.dur), key: n.key, vel: n.vel, ch: n.ch, program: n.program, drum: n.ch === 9 })).sort((a, b) => a.t - b.t) };
+      notes: notes.map(n => ({ t: off + secAt(n.tick), end: off + secAt(n.tick + n.dur), tick: n.tick, key: n.key, vel: n.vel, ch: n.ch, program: n.program, drum: n.ch === 9 })).sort((a, b) => a.t - b.t) };
   }
   const firstNote = (tau) => { const ns = lab.song.notes; let lo = 0, hi = ns.length; while (lo < hi) { const m = (lo + hi) >> 1; if (ns[m].t < tau) lo = m + 1; else hi = m; } return lo; };
+  // clicks per bar and their spacing in ticks (compound x/8 bars can click on dotted quarters)
+  function barGrid(b, c) {
+    let unit = lab.song.ppq * 4 / b.den;
+    if (c.group && b.den >= 8 && b.num % 3 === 0 && b.num > 3) unit *= 3;
+    return { unit, count: Math.max(1, Math.ceil(b.len / unit - 1e-6)) };
+  }
   function labEvents(from, to) {
-    const { bars, secAt, ppq, off } = lab.song, ev = [];
+    const { bars, secAt, off, notes, ppq } = lab.song, ev = [], tol = ppq / 48;
+    const push = (tk, kind, acc, n) => ev.push({ t: off + secAt(tk), tick: tk, kind, accent: acc, bar: n,
+      freq: kind === 'sub' ? state.subPitch : acc ? state.accentPitch : state.beatPitch,
+      gain: kind === 'sub' ? state.subVol * 0.8 : (acc ? 1 : 0.7) * state.beatVol });
     for (let n = from; n <= to; n++) {
       const b = bars[n - 1], c = cfgOf(n);
       if (!b || c.mute) continue;
-      let unit = ppq * 4 / b.den;
-      if (c.group && b.den >= 8 && b.num % 3 === 0 && b.num > 3) unit *= 3;
-      const pat = c.pattern > 0 ? GRID_PATTERNS[c.pattern] : null;
-      const sn = pat ? pat.n : c.subdiv, mask = pat ? pat.mask : null;
-      const offs = sn > 1 ? subOffsets(sn, c.swing) : [0];
-      for (let k = 0; k * unit < b.len - 1e-6; k++) {
-        const tk = b.tick + k * unit, acc = !k && c.accent;
-        ev.push({ t: off + secAt(tk), tick: tk, kind: acc ? 'accent' : 'beat', freq: acc ? state.accentPitch : state.beatPitch, gain: (acc ? 1 : 0.7) * state.beatVol, accent: acc, bar: n });
-        for (let j = 1; j < offs.length; j++) {
-          const st = tk + offs[j] * unit;
-          if (st >= b.tick + b.len) break;
-          if (!mask || mask[j]) ev.push({ t: off + secAt(st), tick: st, kind: 'sub', freq: state.subPitch, gain: state.subVol * 0.8, accent: false, bar: n });
+      const { unit, count } = barGrid(b, c), end = b.tick + b.len, follow = c.follow && notes.length ? c.follow : '', grid = [];
+      if (follow !== 'replace') {
+        const pat = c.pattern > 0 ? GRID_PATTERNS[c.pattern] : null;
+        for (let k = 0; k < count; k++) {
+          // a per-beat setting (cfg.beats) wins over the bar's subdivision or pattern
+          const own = c.beats && c.beats[k], sn = own ? own.n : pat ? pat.n : c.subdiv, mask = own ? own.mask : pat ? pat.mask : null;
+          const tk = b.tick + k * unit, acc = !k && c.accent;
+          if (!mask || mask[0]) { push(tk, acc ? 'accent' : 'beat', acc, n); grid.push(tk); }
+          if (sn > 1) subOffsets(sn, c.swing).forEach((o, j) => { const st = tk + o * unit; if (j && st < end && (!mask || mask[j])) { push(st, 'sub', false, n); grid.push(st); } });
+        }
+      }
+      if (follow) {
+        const seen = [];
+        for (let i = firstNote(b.t - 1e-6); i < notes.length && notes[i].tick < end; i++) {
+          const nt = notes[i];
+          if (nt.tick < b.tick || !lab.followChs.has(nt.ch)) continue;
+          if (seen.some(x => Math.abs(x - nt.tick) <= tol) || grid.some(x => Math.abs(x - nt.tick) <= tol)) continue;
+          seen.push(nt.tick);
+          const rel = nt.tick - b.tick, onBeat = Math.abs(rel - Math.round(rel / unit) * unit) <= tol, acc = rel <= tol && c.accent;
+          push(nt.tick, onBeat ? (acc ? 'accent' : 'beat') : 'sub', acc, n);
         }
       }
     }
-    return ev;
+    return ev.sort((a, b) => a.t - b.t);
   }
+
   const firstEv = (tau) => { let lo = 0, hi = lab.ev.length; while (lo < hi) { const m = (lo + hi) >> 1; if (lab.ev[m].t < tau) lo = m + 1; else hi = m; } return lo; };
   function barAt(tau) {
     const bars = lab.song.bars;
@@ -1909,7 +1941,7 @@ canvas.wave.zoom { height: 72px; }
   let labSaveT;
   function saveLab() {
     clearTimeout(labSaveT);
-    labSaveT = setTimeout(() => store.set(lab.key, { cfg: lab.cfg, base: lab.base, sel: lab.sel, exStart: lab.exStart, repeats: lab.repeats }), 250);
+    labSaveT = setTimeout(() => store.set(lab.key, { cfg: lab.cfg, base: lab.base, sel: lab.sel, exStart: lab.exStart, repeats: lab.repeats, followChs: [...lab.followChs] }), 250);
   }
   function setSource(src) {
     labStop();
@@ -1928,10 +1960,25 @@ canvas.wave.zoom { height: 72px; }
     $('labSongVolRow').hidden = !(audio || hasNotes); $('labSongVolLabel').textContent = audio ? 'เพลง' : 'โน้ต';
     $('lxNotesRow').hidden = !hasNotes;
     renderTracks(hasNotes ? src.channels || [] : []);
+    const pitched = (src.channels || []).find(c => !c.chs.includes(9)) || (src.channels || [])[0];
+    lab.followChs = new Set(saved.followChs || (pitched ? pitched.chs : []));
+    renderFollowTracks(hasNotes ? src.channels || [] : []);
     if (hasNotes) kitReady();
     $('labRepeatsRow').hidden = !src.rep; $('labRepeats').checked = lab.repeats;
     syncAlignInputs();
     rebuild();
+  }
+  function renderFollowTracks(list) {
+    $('lcFollowTracks').replaceChildren(...list.map(c => {
+      const b = document.createElement('button'); b.type = 'button'; b.textContent = c.name;
+      b.setAttribute('aria-pressed', String(c.chs.some(ch => lab.followChs.has(ch))));
+      b.addEventListener('click', () => {
+        const on = c.chs.some(ch => lab.followChs.has(ch));
+        c.chs.forEach(ch => on ? lab.followChs.delete(ch) : lab.followChs.add(ch));
+        b.setAttribute('aria-pressed', String(!on)); rebuild();
+      });
+      return b;
+    }));
   }
   function renderTracks(list) {
     $('labTracksRow').hidden = !list.length;
@@ -1995,8 +2042,10 @@ canvas.wave.zoom { height: 72px; }
       if (c) {
         if (c.mute) badge = 'เงียบ';
         else {
-          if (c.pattern > 0) badge = PAT_SHORT[c.pattern] || '';
+          if (c.beats) badge = 'กริด';
+          else if (c.pattern > 0) badge = PAT_SHORT[c.pattern] || '';
           else if (c.subdiv > 1) badge = 'ซอย ' + c.subdiv;
+          if (c.follow) badge = c.follow === 'replace' ? 'โน้ต' : badge ? badge + '+โน้ต' : '+โน้ต';
           if (c.group) badge += (badge ? ' ' : '') + '♩.';
         }
       }
@@ -2039,8 +2088,11 @@ canvas.wave.zoom { height: 72px; }
     let compound = false;
     for (let n = lab.sel.from; n <= lab.sel.to; n++) { const b = lab.song.bars[n - 1]; if (b.den >= 8 && b.num % 3 === 0 && b.num > 3) { compound = true; break; } }
     $('lcGroupRow').hidden = !compound;
-    $('lcSub').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(c.pattern <= 0 && +b.dataset.v === c.subdiv)));
-    $('lcPattern').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.v === c.pattern)));
+    $('lcSub').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(!c.beats && c.pattern <= 0 && +b.dataset.v === c.subdiv)));
+    $('lcPattern').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(!c.beats && +b.dataset.v === c.pattern)));
+    $('lcFollowGroup').hidden = !lab.song.notes.length;
+    $('lcFollow').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === (c.follow || ''))));
+    renderBeatsEditor();
     const n = c.pattern > 0 ? GRID_PATTERNS[c.pattern].n : c.subdiv, swingOk = n === 2 || n === 4;
     $('lcSwing').value = c.swing; $('lcSwing').disabled = !swingOk; $('lcSwingRow').classList.toggle('disabled', !swingOk);
     $('lcSwingOut').textContent = c.swing + '%';
@@ -2048,9 +2100,46 @@ canvas.wave.zoom { height: 72px; }
     if (document.activeElement !== $('lcNum')) $('lcNum').value = raw.num || '';
     $('lcDen').value = raw.den ? String(raw.den) : '';
   }
+  // the selected bars must have the same number of clicks to share one per-beat setting
+  function selectionBeatCount() {
+    let count = 0;
+    for (let n = lab.sel.from; n <= lab.sel.to; n++) { const k = barGrid(lab.song.bars[n - 1], cfgOf(n)).count; if (!count) count = k; else if (k !== count) return 0; }
+    return count;
+  }
+  function beatsOf(n, count) {
+    const c = cfgOf(n);
+    if (c.beats && c.beats.length === count) return clone(c.beats);
+    const pat = c.pattern > 0 ? GRID_PATTERNS[c.pattern] : null, sn = pat ? pat.n : c.subdiv;
+    return Array.from({ length: count }, () => ({ n: sn, mask: pat ? pat.mask.slice() : Array(sn).fill(1) }));
+  }
+  function renderBeatsEditor() {
+    const count = selectionBeatCount(), c = cfgOf(lab.sel.from), wrap = $('lcBeats');
+    $('lcBeatsClear').hidden = !c.beats;
+    if (!count) { wrap.replaceChildren(); $('lcBeatsHint').textContent = 'ห้องที่เลือกมีจำนวนจังหวะไม่เท่ากัน เลือกห้องเดียว หรือหลายห้องที่มีจังหวะเท่ากัน เพื่อตั้งรายจังหวะ'; return; }
+    $('lcBeatsHint').textContent = 'เลือกการซอยของแต่ละจังหวะ แล้วแตะช่องเพื่อเปิดหรือปิดโน้ต ช่องแรกคือตัวจังหวะเอง'
+      + (lab.sel.from !== lab.sel.to ? ` · ใช้กับห้อง ${lab.sel.from}–${lab.sel.to}` : '') + (c.follow === 'replace' ? ' · ตอนนี้ช่วงนี้ใช้คลิกตามโน้ตแทน' : '');
+    const beats = beatsOf(lab.sel.from, count);
+    wrap.replaceChildren(...beats.map((g, i) => {
+      const row = document.createElement('div'); row.className = 'grow';
+      row.innerHTML = `<span class="bl">จังหวะ ${i + 1}</span><select aria-label="ซอยจังหวะ ${i + 1}">${[1, 2, 3, 4, 5, 6, 7, 8].map(v => `<option value="${v}"${v === g.n ? ' selected' : ''}>÷${v}</option>`).join('')}</select><span class="steps"></span>`;
+      const steps = row.querySelector('.steps');
+      for (let k = 0; k < g.n; k++) {
+        const b = document.createElement('button'); b.type = 'button';
+        b.textContent = k ? (STEP_LABEL[g.n] || [])[k] || k + 1 : i + 1;
+        b.setAttribute('aria-pressed', String(!!g.mask[k]));
+        b.setAttribute('aria-label', `จังหวะ ${i + 1} โน้ตที่ ${k + 1}`);
+        b.addEventListener('click', () => { g.mask[k] = g.mask[k] ? 0 : 1; applyCfg({ beats }); });
+        steps.appendChild(b);
+      }
+      row.querySelector('select').addEventListener('change', e => { g.n = +e.target.value; g.mask = Array(g.n).fill(1); applyCfg({ beats }); });
+      return row;
+    }));
+  }
   function applyCfg(patch) {
     for (let n = lab.sel.from; n <= lab.sel.to; n++) {
-      const next = Object.assign({}, lab.cfg[n], patch);
+      const own = {};
+      for (const k of Object.keys(patch)) own[k] = patch[k] && typeof patch[k] === 'object' ? clone(patch[k]) : patch[k];
+      const next = Object.assign({}, lab.cfg[n], own);
       for (const k of Object.keys(next)) if (next[k] === LAB_DEFAULT[k] || next[k] === undefined || next[k] === '' || Number.isNaN(next[k])) delete next[k];
       if (Object.keys(next).length) lab.cfg[n] = next; else delete lab.cfg[n];
     }
@@ -2064,12 +2153,14 @@ canvas.wave.zoom { height: 72px; }
   $('lcPattern').addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
     const i = +b.dataset.v, cur = cfgOf(lab.sel.from).pattern;
-    applyCfg(cur === i ? { pattern: -1, subdiv: 1 } : { pattern: i, subdiv: GRID_PATTERNS[i].n });
+    applyCfg(cur === i ? { pattern: -1, subdiv: 1, beats: undefined } : { pattern: i, subdiv: GRID_PATTERNS[i].n, beats: undefined });
   });
-  $('lcSub').addEventListener('click', e => { const b = e.target.closest('button'); if (b) applyCfg({ subdiv: +b.dataset.v, pattern: -1 }); });
+  $('lcSub').addEventListener('click', e => { const b = e.target.closest('button'); if (b) applyCfg({ subdiv: +b.dataset.v, pattern: -1, beats: undefined }); });
+  $('lcBeatsClear').addEventListener('click', () => applyCfg({ beats: undefined }));
+  $('lcFollow').addEventListener('click', e => { const b = e.target.closest('button'); if (b) applyCfg({ follow: b.dataset.v }); });
   $('lcMute').addEventListener('change', e => applyCfg({ mute: e.target.checked }));
   $('lcAccent').addEventListener('change', e => applyCfg({ accent: e.target.checked }));
-  $('lcGroup').addEventListener('change', e => applyCfg({ group: e.target.checked }));
+  $('lcGroup').addEventListener('change', e => applyCfg({ group: e.target.checked, beats: undefined }));
   $('lcSwing').addEventListener('input', e => { $('lcSwingOut').textContent = e.target.value + '%'; });
   $('lcSwing').addEventListener('change', e => applyCfg({ swing: +e.target.value }));
   const optNum = (el, lo, hi) => { const v = parseFloat(el.value); return v > 0 ? clamp(v, lo, hi) : undefined; };
