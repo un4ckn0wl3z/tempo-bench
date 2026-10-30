@@ -176,6 +176,7 @@ input[type="range"] { width: 100%; accent-color: var(--teal); min-width: 0; }
 .adv-toggle input:checked { background: var(--brass); }
 .adv-toggle input:checked::after { transform: translateX(14px); }
 .btn.txt { font-family: var(--font-ui); }
+.adv-tag { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 99px; background: var(--brass-soft); color: var(--brass); font-size: .65rem; letter-spacing: .08em; vertical-align: 1px; }
 .btn.reset { border-radius: 99px; min-height: 30px; padding: 3px 14px; font-size: .85rem; }
 .btn.reset.armed { color: var(--warn); border-color: var(--warn); }
 .subs b.off { background: transparent; box-shadow: inset 0 0 0 1px var(--line); }
@@ -292,7 +293,6 @@ input[type="range"] { width: 100%; accent-color: var(--teal); min-width: 0; }
         <button role="tab" aria-selected="false" data-tab="sound">เสียง</button>
         <button role="tab" aria-selected="false" data-tab="train">ฝึกซ้อม</button>
         <button role="tab" aria-selected="false" data-tab="presets">พรีเซ็ต</button>
-        <button role="tab" aria-selected="false" data-tab="adv" id="advTab" hidden>ขั้นสูง</button>
       </div>
 
       <div class="pane" data-pane="rhythm">
@@ -306,6 +306,22 @@ input[type="range"] { width: 100%; accent-color: var(--teal); min-width: 0; }
             </div>
           </div>
           <p class="hint">BPM นับตามตัวโน้ตล่าง เช่น 6/8 คือเคาะทุกเขบ็ตหนึ่งชั้น ถ้าต้องการเคาะ 6/8 แบบ 2 จังหวะต่อห้อง ให้ตั้ง 2/4 แล้วซอยโน้ต 3</p>
+        </div>
+
+        <div class="group adv-only" hidden>
+          <h3><span>หน่วยของ BPM <span class="adv-tag">Advance</span></span></h3>
+          <div class="chips" data-chip="beatUnit">
+            <button data-v="auto">ตามตัวล่าง</button>
+            <button data-v="2" aria-label="ตัวขาว"><span class="ng">𝅗𝅥</span></button>
+            <button data-v="2." aria-label="ตัวขาวประจุด"><span class="ng">𝅗𝅥.</span></button>
+            <button data-v="4" aria-label="ตัวดำ"><span class="ng">♩</span></button>
+            <button data-v="4." aria-label="ตัวดำประจุด"><span class="ng">♩.</span></button>
+            <button data-v="8" aria-label="เขบ็ต 1 ชั้น"><span class="ng">♪</span></button>
+            <button data-v="8." aria-label="เขบ็ต 1 ชั้นประจุด"><span class="ng">♪.</span></button>
+            <button data-v="16" aria-label="เขบ็ต 2 ชั้น"><span class="ng">𝅘𝅥𝅯</span></button>
+          </div>
+          <label class="switch"><input type="checkbox" id="clickUnit" data-key="clickUnit">คลิกตามหน่วยนี้ (เช่น 6/8 กับ ♩. ได้ 2 คลิกต่อห้อง)</label>
+          <p class="hint">ใช้กับห้องผสมอย่าง 6/8, 9/8, 12/8 ถ้าแบ่งห้องตามหน่วยไม่ลงตัว จะคลิกตามตัวล่าง แต่ยังคิดความเร็วตามหน่วยที่เลือก</p>
         </div>
 
         <div class="group">
@@ -326,6 +342,13 @@ input[type="range"] { width: 100%; accent-color: var(--teal); min-width: 0; }
             <output data-out="swing"></output>
           </div>
           <p class="hint">Swing ใช้ได้กับซอย 2 และ 4 · 50% คือตรง, 67% คือ triplet swing</p>
+        </div>
+
+        <div class="group adv-only" hidden>
+          <h3><span>กริดจังหวะ <span class="adv-tag">Advance</span></span><label class="switch"><input type="checkbox" id="gridOn" data-key="gridOn">เปิด</label></h3>
+          <p class="hint">ตั้งการซอยแยกรายจังหวะ แล้วแตะช่องเพื่อเปิดหรือปิดโน้ตแต่ละตัว ช่องที่ปิดคือตัวหยุดหรือโน้ตที่โยงมาจากตัวก่อนหน้า ใช้ทำโน้ตประจุดและ syncopation ได้</p>
+          <div class="chips" id="gridPatterns"></div>
+          <div class="gridrows" id="gridRows"></div>
         </div>
 
         <div class="group">
@@ -365,6 +388,13 @@ input[type="range"] { width: 100%; accent-color: var(--teal); min-width: 0; }
           <label class="switch"><input type="checkbox" id="flash" data-key="flash">กระพริบแผงเมื่อถึงจังหวะ</label>
           <label class="switch"><input type="checkbox" id="swingArm" data-key="swingArm">แกนลูกตุ้มแกว่งตามจังหวะ</label>
         </div>
+
+        <div class="group adv-only" hidden>
+          <h3><span>เสียงและภาพ <span class="adv-tag">Advance</span></span></h3>
+          <div class="row"><label for="visualOffset">เลื่อนภาพ</label><input type="range" id="visualOffset" data-key="visualOffset" min="-150" max="300" step="5"><output data-out="visualOffset"></output></div>
+          <p class="hint">ถ้าภาพมาก่อนเสียง เช่นตอนใช้หูฟังบลูทูธ ให้เพิ่มค่าจนไฟกระพริบตรงกับเสียง</p>
+          <label class="switch"><input type="checkbox" id="silent" data-key="silent">ปิดเสียงทั้งหมด ดูภาพอย่างเดียว</label>
+        </div>
       </div>
 
       <div class="pane" data-pane="train" hidden>
@@ -395,6 +425,27 @@ input[type="range"] { width: 100%; accent-color: var(--teal); min-width: 0; }
           <div class="row"><label for="countIn">นับนำ</label><input type="range" id="countIn" data-key="countIn" min="0" max="2" step="1"><output data-out="countIn"></output></div>
           <p class="hint">ห้องนับนำเล่นครบทุกจังหวะ ไม่นับรวมกับ gap click หรือการไต่ความเร็ว</p>
         </div>
+
+        <div class="group adv-only" hidden>
+          <h3><span>โครงเพลง <span class="adv-tag">Advance</span></span><label class="switch"><input type="checkbox" id="songOn" data-key="songOn">เปิด</label></h3>
+          <p class="hint">เล่นท่อนต่อกันตามลำดับ แต่ละท่อนมีจำนวนห้อง ห้องจังหวะ และ BPM ของตัวเอง ระหว่างนี้การไต่ความเร็วจะไม่ทำงาน</p>
+          <ul class="sections" id="songList"></ul>
+          <div class="tempo-tools">
+            <button class="btn txt" id="addSection" type="button">+ เพิ่มท่อน</button>
+            <label class="switch"><input type="checkbox" id="songLoop" data-key="songLoop">วนซ้ำเมื่อจบ</label>
+            <span class="meta" id="songTotal"></span>
+          </div>
+        </div>
+
+        <div class="group adv-only" hidden>
+          <h3><span>สถิติการซ้อม <span class="adv-tag">Advance</span></span><button class="btn txt" id="logReset" type="button">ล้างสถิติ</button></h3>
+          <div class="stats">
+            <div class="stat"><div class="k">วันนี้</div><div class="v" id="lgToday">0 นาที</div></div>
+            <div class="stat"><div class="k">7 วันล่าสุด</div><div class="v" id="lg7">0 นาที</div></div>
+            <div class="stat"><div class="k">ซ้อมต่อเนื่อง</div><div class="v" id="lgStreak">0 วัน</div></div>
+          </div>
+          <p class="hint">นับเวลาที่เมโทรนอมเล่นอยู่ (วันละ 1 นาทีขึ้นไปถึงนับเป็นวันต่อเนื่อง) เก็บไว้ในเบราว์เซอร์เครื่องนี้เท่านั้น</p>
+        </div>
       </div>
 
       <div class="pane" data-pane="presets" hidden>
@@ -412,59 +463,6 @@ input[type="range"] { width: 100%; accent-color: var(--teal); min-width: 0; }
         <div class="group">
           <h3>ตัวอย่าง</h3>
           <ul class="plist" id="builtinPresets"></ul>
-        </div>
-      </div>
-
-      <div class="pane" data-pane="adv" hidden>
-        <div class="group">
-          <h3>หน่วยของ BPM</h3>
-          <div class="chips" data-chip="beatUnit">
-            <button data-v="auto">ตามตัวล่าง</button>
-            <button data-v="2" aria-label="ตัวขาว"><span class="ng">𝅗𝅥</span></button>
-            <button data-v="2." aria-label="ตัวขาวประจุด"><span class="ng">𝅗𝅥.</span></button>
-            <button data-v="4" aria-label="ตัวดำ"><span class="ng">♩</span></button>
-            <button data-v="4." aria-label="ตัวดำประจุด"><span class="ng">♩.</span></button>
-            <button data-v="8" aria-label="เขบ็ต 1 ชั้น"><span class="ng">♪</span></button>
-            <button data-v="8." aria-label="เขบ็ต 1 ชั้นประจุด"><span class="ng">♪.</span></button>
-            <button data-v="16" aria-label="เขบ็ต 2 ชั้น"><span class="ng">𝅘𝅥𝅯</span></button>
-          </div>
-          <label class="switch"><input type="checkbox" id="clickUnit" data-key="clickUnit">คลิกตามหน่วยนี้ (เช่น 6/8 กับ ♩. ได้ 2 คลิกต่อห้อง)</label>
-          <p class="hint">ใช้กับห้องผสมอย่าง 6/8, 9/8, 12/8 ถ้าแบ่งห้องตามหน่วยไม่ลงตัว จะคลิกตามตัวล่าง แต่ยังคิดความเร็วตามหน่วยที่เลือก</p>
-        </div>
-
-        <div class="group">
-          <h3>กริดจังหวะ <label class="switch"><input type="checkbox" id="gridOn" data-key="gridOn">เปิด</label></h3>
-          <p class="hint">ตั้งการซอยแยกรายจังหวะ แล้วแตะช่องเพื่อเปิดหรือปิดโน้ตแต่ละตัว ช่องที่ปิดคือตัวหยุดหรือโน้ตที่โยงมาจากตัวก่อนหน้า ใช้ทำโน้ตประจุดและ syncopation ได้</p>
-          <div class="chips" id="gridPatterns"></div>
-          <div class="gridrows" id="gridRows"></div>
-        </div>
-
-        <div class="group">
-          <h3>โครงเพลง <label class="switch"><input type="checkbox" id="songOn" data-key="songOn">เปิด</label></h3>
-          <p class="hint">เล่นท่อนต่อกันตามลำดับ แต่ละท่อนมีจำนวนห้อง ห้องจังหวะ และ BPM ของตัวเอง ระหว่างนี้การไต่ความเร็วจะไม่ทำงาน</p>
-          <ul class="sections" id="songList"></ul>
-          <div class="tempo-tools">
-            <button class="btn txt" id="addSection" type="button">+ เพิ่มท่อน</button>
-            <label class="switch"><input type="checkbox" id="songLoop" data-key="songLoop">วนซ้ำเมื่อจบ</label>
-            <span class="meta" id="songTotal"></span>
-          </div>
-        </div>
-
-        <div class="group">
-          <h3>เสียงและภาพ</h3>
-          <div class="row"><label for="visualOffset">เลื่อนภาพ</label><input type="range" id="visualOffset" data-key="visualOffset" min="-150" max="300" step="5"><output data-out="visualOffset"></output></div>
-          <p class="hint">ถ้าภาพมาก่อนเสียง เช่นตอนใช้หูฟังบลูทูธ ให้เพิ่มค่าจนไฟกระพริบตรงกับเสียง</p>
-          <label class="switch"><input type="checkbox" id="silent" data-key="silent">ปิดเสียงทั้งหมด ดูภาพอย่างเดียว</label>
-        </div>
-
-        <div class="group">
-          <h3>สถิติการซ้อม <button class="btn txt" id="logReset" type="button">ล้างสถิติ</button></h3>
-          <div class="stats">
-            <div class="stat"><div class="k">วันนี้</div><div class="v" id="lgToday">0 นาที</div></div>
-            <div class="stat"><div class="k">7 วันล่าสุด</div><div class="v" id="lg7">0 นาที</div></div>
-            <div class="stat"><div class="k">ซ้อมต่อเนื่อง</div><div class="v" id="lgStreak">0 วัน</div></div>
-          </div>
-          <p class="hint">นับเวลาที่เมโทรนอมเล่นอยู่ (วันละ 1 นาทีขึ้นไปถึงนับเป็นวันต่อเนื่อง) เก็บไว้ในเบราว์เซอร์เครื่องนี้เท่านั้น</p>
         </div>
       </div>
     </section>
@@ -650,8 +648,7 @@ input[type="range"] { width: 100%; accent-color: var(--teal); min-width: 0; }
     $('swingRow').classList.toggle('disabled', !(state.subdiv === 2 || state.subdiv === 4));
     $('swing').disabled = !(state.subdiv === 2 || state.subdiv === 4);
     $('polyRowCtl').classList.toggle('disabled', !state.polyOn);
-    $('advTab').hidden = !state.advanced;
-    if (!state.advanced && $('advTab').getAttribute('aria-selected') === 'true') document.querySelector('[data-tab="rhythm"]').click();
+    document.querySelectorAll('.adv-only').forEach(g => g.hidden = !state.advanced);
     $('clickUnit').disabled = state.beatUnit === 'auto';
     $('gridRows').classList.toggle('disabled', !state.gridOn);
     if (master && ctx) master.gain.setTargetAtTime(masterLevel(), ctx.currentTime, 0.02);
@@ -667,7 +664,7 @@ input[type="range"] { width: 100%; accent-color: var(--teal); min-width: 0; }
       if (k === 'advanced' || k === 'clickUnit' || k === 'gridOn') renderBeats();
       if (k === 'songOn' || k === 'advanced') renderSongList();
       syncControls(); persist();
-      if (k === 'advanced' && state.advanced) { $('advTab').click(); renderLog(); }
+      if (k === 'advanced' && state.advanced) renderLog();
     });
   });
   document.querySelectorAll('[data-chip]').forEach(g => {
