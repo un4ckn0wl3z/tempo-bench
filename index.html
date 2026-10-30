@@ -1342,10 +1342,13 @@ canvas.wave.zoom { height: 72px; }
   $('resetAll').addEventListener('click', () => {
     clearTimeout(resetAllT);
     if (resetAllArm && Date.now() - resetAllArm < 3000) {
-      if (playing) stop();
-      state = clone(DEFAULTS);
-      document.querySelector('[data-tab="rhythm"]').click();
-      renderAll(); persistNow();
+      if (!$('lab').hidden) labReset();
+      else {
+        if (playing) stop();
+        state = clone(DEFAULTS);
+        document.querySelector('[data-tab="rhythm"]').click();
+        renderAll(); persistNow();
+      }
       disarmReset('คืนค่าแล้ว');
       resetAllT = setTimeout(() => disarmReset('คืนค่าเริ่มต้น'), 1500);
       return;
@@ -1938,6 +1941,14 @@ canvas.wave.zoom { height: 72px; }
       b.addEventListener('click', () => { const off = c.chs.some(ch => lab.muted.has(ch)); c.chs.forEach(ch => off ? lab.muted.delete(ch) : lab.muted.add(ch)); b.setAttribute('aria-pressed', String(off)); });
       return b;
     }));
+  }
+  function labReset() {
+    clearTimeout(labSaveT);
+    try { localStorage.removeItem(lab.key); } catch (e) {}
+    $('labLoop').checked = false; $('labCountIn').checked = false; $('labFollow').checked = true;
+    $('labSongVol').value = 0.9; $('labClickVol').value = 0.9; $('lxNotes').checked = false; $('lxStatus').textContent = '';
+    setSource(lab.src);
+    $('labMap').scrollTop = 0;
   }
   function rebuild() {
     buildSong();
